@@ -10,9 +10,9 @@ class ContentCreationAgent:
     def __init__(self):
         self.gateway = ModelGateway()
 
-    def run(self, filename: str, tags: list[str], score: float) -> Dict[str, Any]:
+    def run(self, filename: str, tags: list[str], impact_analysis: dict) -> Dict[str, Any]:
         prompt = get_prompt("content_creation")
-        user = prompt["user_template"].format(filename=filename, tags=tags, score=score)
+        user = prompt["user_template"].format(filename=filename, tags=tags, impact_analysis=impact_analysis)
         data, meta = asyncio.run(
             self.gateway.generate_json(
                 model=settings.model_name_content,

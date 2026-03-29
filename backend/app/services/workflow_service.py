@@ -8,6 +8,7 @@ from app.agents.classification import ClassificationAgent
 from app.agents.compliance import ComplianceGovernanceAgent
 from app.agents.content import ContentCreationAgent, LocalizationAgent
 from app.agents.impact import ImpactScoringAgent
+from app.agents.direct_impact import DirectImpactScoringAgent
 from app.agents.moderation import ModerationAgent
 from app.agents.reporter import ReporterAgent
 from app.models.entities import AIResult, AuditEvent, ProcessingJob, ReportArtifact, ReviewDecision, VideoAsset
@@ -21,6 +22,7 @@ class WorkflowService:
         self.moderation = ModerationAgent()
         self.classifier = ClassificationAgent()
         self.impact = ImpactScoringAgent()
+        self.direct_impact = DirectImpactScoringAgent()
         self.compliance = ComplianceGovernanceAgent()
         self.creator = ContentCreationAgent()
         self.localizer = LocalizationAgent()
@@ -106,7 +108,7 @@ class WorkflowService:
         try:
             mod = self.moderation.run(video.filename)
             cls = self.classifier.run(video.filename)
-            imp = self.impact.run(mod, cls)
+            imp = self.direct_impact.run(video.storage_uri)
             cmp = self.compliance.run(mod, cls)
         except Exception as exc:
             job.priority = PriorityQueue.HOLD
@@ -126,7 +128,7 @@ class WorkflowService:
 
         mod_meta = self._extract_meta(mod)
         cls_meta = self._extract_meta(cls)
-        imp_meta = self._extract_meta(imp)
+        imp_meta = imp.get("components", {})
         cmp_meta = self._extract_meta(cmp)
 
         ai = db.scalar(select(AIResult).where(AIResult.video_id == video.video_id))
@@ -134,7 +136,11 @@ class WorkflowService:
             ai = AIResult(video_id=video.video_id)
             db.add(ai)
         ai.moderation_flags = self._strip_meta(mod)
-        ai.tags = self._strip_meta(cls)
+
+        tags_dict = self._strip_meta(cls)
+        tags_dict["impact_analysis"] = self._strip_meta(imp)
+        ai.tags = tags_dict
+
         ai.impact_score = float(self._strip_meta(imp).get("impact_score", 0.0))
         ai.compliance = self._strip_meta(cmp)
         job.priority = routing_service.route_priority(db, ai.impact_score)
@@ -233,7 +239,8 @@ class WorkflowService:
         ai = db.scalar(select(AIResult).where(AIResult.video_id == job.video_id))
         video = db.scalar(select(VideoAsset).where(VideoAsset.video_id == job.video_id))
         try:
-            content = self.creator.run(video.filename, ai.tags.get("tags", []), ai.impact_score)
+            impact_analysis = ai.tags.get("impact_analysis", {})
+            content = self.creator.run(video.filename, ai.tags.get("tags", []), impact_analysis)
             localized = self.localizer.run(content)
         except Exception as exc:
             job.priority = PriorityQueue.HOLD
