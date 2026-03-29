@@ -9,6 +9,7 @@ import { VideoPreview } from "@/components/video-preview";
 import { Spinner } from "@/components/spinner";
 import { LocalizedAudioButton } from "@/components/localized-audio-button";
 import { extractSpeakableEntries } from "@/lib/content-audio";
+import { useSessionStore } from "@/store/session-store";
 
 type VideoData = {
   video_id: string;
@@ -33,6 +34,7 @@ type TimelineStage = {
   description: string;
 };
 
+// Full pipeline for admins/moderators
 const STAGES: TimelineStage[] = [
   { id: "uploaded", label: "Video Submitted", description: "Video received by platform" },
   { id: "phase_a", label: "Initial AI Review", description: "Safety, tags, impact, and policy checks" },
@@ -44,11 +46,64 @@ const STAGES: TimelineStage[] = [
   { id: "reward", label: "Reward Credited", description: "Points credited to user wallet" }
 ];
 
+// Simplified 4-step view for uploaders
+const USER_STEPS = [
+  { id: "uploaded", label: "Submitted", icon: "📤", description: "Your video was received" },
+  { id: "reviewing", label: "Under Review", icon: "🔍", description: "Our team is reviewing your video" },
+  { id: "approved", label: "Approved", icon: "✅", description: "Your video passed our review" },
+  { id: "reward", label: "Reward Credited", icon: "🎁", description: "Points added to your wallet" }
+];
+
+const STATE_LABEL: Record<string, string> = {
+  PENDING: "In Review",
+  PROCESSING: "Processing",
+  APPROVED: "Approved",
+  REJECTED: "Not Approved — our team reviewed this video and it did not meet our content guidelines.",
+  PUBLISHED: "Published",
+  FAILED: "Something went wrong",
+  HOLD: "On Hold",
+  COMPLETED: "Completed",
+  IN_REVIEW_GATE_1: "Under Review",
+  IN_REVIEW_GATE_2: "Under Review",
+  AI_PHASE_B_DONE: "Under Review",
+  DISTRIBUTED: "Almost done!",
+};
+
+function userFriendlyState(state: string) {
+  return STATE_LABEL[state] ?? "Processing";
+}
+
+function userStepActive(stepId: string, eventTypes: Set<string>, state: string): "done" | "current" | "pending" {
+  const isRejected = state.includes("REJECTED");
+  if (stepId === "uploaded") {
+    return eventTypes.has("JOB_CREATED") ? "done" : "current";
+  }
+  if (stepId === "reviewing") {
+    if (eventTypes.has("GATE_2_DECISION_APPROVE") || eventTypes.has("GATE_2_DECISION_REJECT") || isRejected) return "done";
+    if (eventTypes.has("JOB_CREATED")) return "current";
+    return "pending";
+  }
+  if (stepId === "approved") {
+    if (isRejected) return "done"; // show as done but with reject styling
+    if (eventTypes.has("DISTRIBUTION_COMPLETED") || eventTypes.has("REWARD_CREDITED")) return "done";
+    if (eventTypes.has("GATE_2_DECISION_APPROVE")) return "current";
+    return "pending";
+  }
+  if (stepId === "reward") {
+    if (eventTypes.has("REWARD_CREDITED")) return "done";
+    if (eventTypes.has("DISTRIBUTION_COMPLETED")) return "current";
+    return "pending";
+  }
+  return "pending";
+}
+
 export default function VideoDetailPage() {
   const params = useParams<{ videoId: string }>();
   const searchParams = useSearchParams();
   const videoId = params.videoId;
   const returnTo = searchParams.get("from");
+  const user = useSessionStore((s) => s.user);
+  const isUploader = user?.role === "uploader";
 
   const videoQ = useQuery({
     queryKey: ["video", videoId],
@@ -73,7 +128,7 @@ export default function VideoDetailPage() {
         throw e;
       }
     },
-    enabled: !!videoId,
+    enabled: !!videoId && !isUploader,
     retry: false,
     refetchInterval: (q) => (q.state.data ? false : 6000)
   });
@@ -88,7 +143,7 @@ export default function VideoDetailPage() {
         throw e;
       }
     },
-    enabled: !!videoId,
+    enabled: !!videoId && !isUploader,
     retry: false,
     refetchInterval: (q) => (q.state.data ? false : 6000)
   });
@@ -103,7 +158,7 @@ export default function VideoDetailPage() {
         throw e;
       }
     },
-    enabled: !!videoId,
+    enabled: !!videoId && !isUploader,
     retry: false,
     refetchInterval: (q) => (q.state.data ? false : 6000)
   });
@@ -119,6 +174,7 @@ export default function VideoDetailPage() {
   const timeline = useMemo(() => auditQ.data ?? [], [auditQ.data]);
   const eventTypes = useMemo(() => new Set((auditQ.data ?? []).map((e) => e.event_type)), [auditQ.data]);
 
+  // ── Full pipeline stage state (admin/moderator) ──────────────────────────
   const stageState = (stageId: string): "done" | "current" | "pending" | "blocked" => {
     const state = statusQ.data?.state ?? "";
     const isRejected = state.includes("REJECTED");
@@ -156,6 +212,7 @@ export default function VideoDetailPage() {
     return "pending";
   };
 
+  // ── AI data (admin/moderator only) ───────────────────────────────────────
   const aiData = aiQ.data ?? {};
   const hasAiData = !!aiQ.data && Object.keys(aiData).length > 0;
   const moderation = (aiData.moderation_flags as Record<string, unknown> | undefined) ?? {};
@@ -216,6 +273,127 @@ export default function VideoDetailPage() {
                 ? "On hold. A moderator action is required to continue."
                 : "Processing is in progress.";
 
+  const isRejected = workflowState.includes("REJECTED");
+  const isCompleted = workflowState === "COMPLETED";
+
+  // ── UPLOADER VIEW ────────────────────────────────────────────────────────
+  if (isUploader) {
+    return (
+      <div className="space-y-4">
+        <div className="hero">
+          <h1 className="text-2xl font-semibold tracking-tight">Your Video</h1>
+          <p className="mt-1 text-sm text-blue-100">
+            {videoQ.data?.filename ?? "Loading..."}
+          </p>
+          <div className="mt-3">
+            <span className="chip border-blue-200/40 bg-white/15 text-blue-50">
+              Submitted {videoQ.data?.created_at ? new Date(videoQ.data.created_at).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : "—"}
+            </span>
+          </div>
+        </div>
+
+        {/* Video preview */}
+        {videoId ? (
+          <div className="card">
+            <VideoPreview videoId={videoId} />
+          </div>
+        ) : null}
+
+        {/* Simple status */}
+        <div className="card">
+          <h2 className="mb-4 section-title">Submission Status</h2>
+
+          {isRejected ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+              <p className="font-semibold text-rose-700">Not Approved</p>
+              <p className="mt-1 text-sm text-rose-600">
+                Our team reviewed this video and it did not meet our content guidelines. You can submit a new video from the Submit page.
+              </p>
+            </div>
+          ) : isCompleted || eventTypes.has("REWARD_CREDITED") ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="font-semibold text-emerald-700">🎉 All done! Reward credited to your wallet.</p>
+              <p className="mt-1 text-sm text-emerald-600">
+                Your video was approved and published. Check your Rewards page to see your points.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {/* 4-step progress tracker */}
+              {USER_STEPS.map((step, idx) => {
+                const st = userStepActive(step.id, eventTypes, workflowState);
+                const dotClass =
+                  st === "done"
+                    ? "bg-emerald-500 ring-emerald-200"
+                    : st === "current"
+                      ? "bg-amber-400 ring-amber-200 animate-pulse"
+                      : "bg-slate-200 ring-slate-100";
+                const labelClass =
+                  st === "done"
+                    ? "text-emerald-700 font-semibold"
+                    : st === "current"
+                      ? "text-amber-700 font-semibold"
+                      : "text-slate-400";
+                const lineClass =
+                  st === "done" ? "bg-emerald-300" : "bg-slate-200";
+
+                return (
+                  <div key={step.id} className="grid grid-cols-[32px_1fr] gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className={`mt-1 h-5 w-5 rounded-full ring-4 ${dotClass} flex items-center justify-center text-white text-xs font-bold`}>
+                        {st === "done" ? "✓" : ""}
+                      </div>
+                      {idx < USER_STEPS.length - 1 ? (
+                        <div className={`my-1 w-[2px] flex-1 min-h-6 ${lineClass}`} />
+                      ) : null}
+                    </div>
+                    <div className="pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{step.icon}</span>
+                        <span className={`text-sm ${labelClass}`}>{step.label}</span>
+                      </div>
+                      {st === "current" ? (
+                        <p className="mt-0.5 text-xs text-slate-500">{step.description}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Human-friendly current state message */}
+        {!isRejected && !isCompleted ? (
+          <div className="card">
+            <p className="text-sm font-medium text-slate-700">
+              Current status:{" "}
+              <span className="font-semibold text-slate-900">
+                {userFriendlyState(workflowState)}
+              </span>
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              We&apos;ll process your video automatically. Rewards are credited once the video is approved and published.
+            </p>
+          </div>
+        ) : null}
+
+        {/* Back / nav */}
+        <div className="flex gap-3">
+          <Link className="btn-secondary" href="/videos/history">
+            ← Back to My Videos
+          </Link>
+          {isCompleted ? (
+            <Link className="btn-primary" href="/profile/wallet">
+              View Rewards
+            </Link>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  // ── ADMIN / MODERATOR VIEW (full detail) ─────────────────────────────────
   return (
     <div className="space-y-4">
       <div className="hero">

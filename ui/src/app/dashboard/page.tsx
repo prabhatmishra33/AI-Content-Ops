@@ -43,9 +43,13 @@ export default function DashboardPage() {
   return (
     <div className="space-y-4">
       <div className="hero">
-        <h1 className="text-2xl font-semibold tracking-tight">Welcome</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {user?.role === "uploader" ? `Hey, ${user.username}` : "Welcome"}
+        </h1>
         <p className="mt-1 text-sm text-blue-100">
-          Track content progress, review work items, and reward updates in one place.
+          {user?.role === "uploader"
+            ? "Submit videos, track their progress, and check your earned rewards."
+            : "Track content progress, review work items, and reward updates in one place."}
         </p>
         <div className="mt-4">
           <span className="chip border-blue-200/40 bg-white/15 text-blue-50">Role: {user?.role}</span>
@@ -98,15 +102,17 @@ export default function DashboardPage() {
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-3">
-        <div className="card">
-          <p className="text-sm font-semibold text-slate-500">Pending Review Items</p>
-          <p className="mt-2 text-3xl font-semibold tracking-tight">
-            {reviewTasksQ.isLoading ? <Spinner size="md" /> : (reviewTasksQ.data?.length ?? 0)}
-          </p>
-          <Link className="mt-3 inline-block text-sm font-medium text-brand-700 underline" href="/reviews/queue">
-            Open inbox
-          </Link>
-        </div>
+        {user?.role === "admin" || user?.role === "moderator" ? (
+          <div className="card">
+            <p className="text-sm font-semibold text-slate-500">Pending Review Items</p>
+            <p className="mt-2 text-3xl font-semibold tracking-tight">
+              {reviewTasksQ.isLoading ? <Spinner size="md" /> : (reviewTasksQ.data?.length ?? 0)}
+            </p>
+            <Link className="mt-3 inline-block text-sm font-medium text-brand-700 underline" href="/reviews/queue">
+              Open inbox
+            </Link>
+          </div>
+        ) : null}
         {user?.role === "uploader" ? (
           <div className="card">
             <p className="text-sm font-semibold text-slate-500">Reward Points</p>
@@ -131,15 +137,21 @@ export default function DashboardPage() {
         <div className="card">
           <p className="text-sm font-semibold text-slate-500">Quick Actions</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Link className="btn-secondary" href="/videos/upload">
-              Submit Video
-            </Link>
-            <Link className="btn-secondary" href="/reviews/queue">
-              Open Reviews
-            </Link>
-            <Link className="btn-secondary" href="/ops/dlq">
-              Recover Issues
-            </Link>
+            {user?.role === "admin" || user?.role === "uploader" ? (
+              <Link className="btn-secondary" href="/videos/upload">
+                Submit Video
+              </Link>
+            ) : null}
+            {user?.role === "admin" || user?.role === "moderator" ? (
+              <Link className="btn-secondary" href="/reviews/queue">
+                Open Reviews
+              </Link>
+            ) : null}
+            {user?.role === "admin" ? (
+              <Link className="btn-secondary" href="/ops/dlq">
+                Recover Issues
+              </Link>
+            ) : null}
           </div>
         </div>
       </div>

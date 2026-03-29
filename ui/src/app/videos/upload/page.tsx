@@ -57,46 +57,45 @@ export default function UploadVideoPage() {
         <p className="mt-1 text-sm text-blue-100">Upload from your device and start the review and publishing process.</p>
       </div>
 
-      <form className="card space-y-3" onSubmit={onUpload}>
-        <div>
-          <label className="label">Your User ID</label>
-          <input className="input mt-1 bg-slate-50 text-slate-600" value={uploaderRef} readOnly />
-        </div>
+      <form className="card space-y-4" onSubmit={onUpload}>
         <div>
           <label className="label">Video File</label>
-          <input className="mt-1 block text-sm" type="file" accept="video/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <p className="mb-2 text-xs text-slate-500">Accepted formats: MP4, MOV, AVI, WebM</p>
+          <input
+            className="mt-1 block w-full cursor-pointer rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium"
+            type="file"
+            accept="video/*"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
         </div>
         {error ? <p className="chip-danger">{error}</p> : null}
-        <button className="btn-primary" disabled={loading} type="submit">
+        <button className="btn-primary" disabled={loading || !file} type="submit">
           {loading ? (
             <span className="inline-flex items-center gap-2">
               <Spinner size="sm" className="border-white/40 border-t-white" />
               Uploading...
             </span>
           ) : (
-            "Upload"
+            "Submit Video"
           )}
         </button>
       </form>
 
       {result ? (
-        <div className="card space-y-3 text-sm">
-          <h2 className="section-title">Submission Details</h2>
-          <p>
-            <span className="font-medium">video_id:</span> {result.video_id}
-          </p>
-          <p>
-            <span className="font-medium">job_id:</span> {result.job_id}
-          </p>
-          <p>
-            <span className="font-medium">thumbnail_uri:</span> {result.thumbnail_uri ?? "null"}
-          </p>
-          <VideoPreview videoId={result.video_id} />
-          <div className="flex gap-2">
-            <Link className="btn-primary" href={`/videos/${result.video_id}`}>
-              Open Video Timeline
-            </Link>
+        <div className="card space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+              ✓
+            </div>
+            <div>
+              <p className="font-semibold text-slate-800">Video submitted successfully!</p>
+              <p className="text-sm text-slate-500">Your video is now in the review queue.</p>
+            </div>
           </div>
+          <VideoPreview videoId={result.video_id} />
+          <Link className="btn-primary" href={`/videos/${result.video_id}`}>
+            Track Progress
+          </Link>
         </div>
       ) : null}
     </div>
