@@ -11,6 +11,7 @@ type NavItem = { href: string; label: string; roles: Array<"uploader" | "moderat
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Home", roles: ["uploader", "moderator", "admin"] },
   { href: "/videos/upload", label: "Submit Video", roles: ["uploader", "admin"] },
+  { href: "/videos/history", label: "My Videos", roles: ["uploader", "admin"] },
   { href: "/reviews/queue", label: "Review Inbox", roles: ["moderator", "admin"] },
   { href: "/profile/wallet", label: "Rewards", roles: ["uploader", "admin"] },
   { href: "/ops/policies", label: "Rules", roles: ["admin"] },
@@ -20,6 +21,7 @@ const NAV_ITEMS: NavItem[] = [
 
 const ROUTE_ROLE_RULES: Array<{ prefix: string; roles: Array<"uploader" | "moderator" | "admin"> }> = [
   { prefix: "/videos/upload", roles: ["uploader", "admin"] },
+  { prefix: "/videos/history", roles: ["uploader", "admin"] },
   { prefix: "/reviews", roles: ["moderator", "admin"] },
   { prefix: "/ops", roles: ["admin"] },
   { prefix: "/profile/wallet", roles: ["uploader", "admin"] }

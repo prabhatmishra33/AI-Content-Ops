@@ -8,6 +8,8 @@ import { apiRequest } from "@/lib/api";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import type { ReviewTask } from "@/lib/types";
 import { Spinner } from "@/components/spinner";
+import { LocalizedAudioButton } from "@/components/localized-audio-button";
+import { extractSpeakableEntries } from "@/lib/content-audio";
 
 type Decision = "APPROVE" | "REJECT";
 
@@ -55,6 +57,14 @@ export default function ReviewTaskDetailPage() {
   const compliance = (aiData.compliance as Record<string, unknown> | undefined) ?? {};
   const complianceStatusRaw = String(compliance.status ?? "PENDING");
   const complianceViolations = Array.isArray(compliance.violations) ? (compliance.violations as string[]) : [];
+  const generatedContent = (aiData.generated_content as Record<string, unknown> | undefined) ?? {};
+  const localizedContent = (aiData.localized_content as Record<string, unknown> | undefined) ?? {};
+  const hasGeneratedContent = Object.keys(generatedContent).length > 0;
+  const hasLocalizedContent = Object.keys(localizedContent).length > 0;
+  const generatedKeys = Object.keys(generatedContent).slice(0, 6);
+  const localizedKeys = Object.keys(localizedContent).slice(0, 6);
+  const generatedSpeakables = extractSpeakableEntries(generatedContent, "Generated");
+  const localizedSpeakables = extractSpeakableEntries(localizedContent, "Localized");
   const complianceStatusLabel =
     complianceStatusRaw === "PASS"
       ? "Ready to proceed"
@@ -201,6 +211,62 @@ export default function ReviewTaskDetailPage() {
                 </ul>
               ) : (
                 <p className="mt-1 text-xs text-slate-500">No policy issues reported.</p>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Generated Content</p>
+              {!hasGeneratedContent ? (
+                <p className="mt-1 text-xs text-slate-500">
+                  Content draft is not generated yet. It appears after Gate 1 approval and AI content preparation.
+                </p>
+              ) : (
+                <>
+                  <p className="mt-1 font-medium text-slate-800">Content draft is ready</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {generatedKeys.map((k) => (
+                      <span key={k} className="chip">{k}</span>
+                    ))}
+                  </div>
+                  {generatedSpeakables.length > 0 ? (
+                    <div className="mt-2 space-y-1.5">
+                      {generatedSpeakables.map((entry, idx) => (
+                        <div key={`${entry.label}-${idx}`} className="flex items-center justify-between rounded border border-slate-200 px-2 py-1.5">
+                          <span className="truncate text-xs text-slate-600">{entry.label}</span>
+                          <LocalizedAudioButton iconOnly locale={entry.locale} textParts={entry.textParts} />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Localized Content</p>
+              {!hasLocalizedContent ? (
+                <p className="mt-1 text-xs text-slate-500">
+                  Localization output is not generated yet. It appears after localization runs in Phase B.
+                </p>
+              ) : (
+                <>
+                  <p className="mt-1 font-medium text-slate-800">Localized content is ready</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {localizedKeys.map((k) => (
+                      <span key={k} className="chip">{k}</span>
+                    ))}
+                  </div>
+                  {localizedSpeakables.length > 0 ? (
+                    <div className="mt-2 space-y-1.5">
+                      {localizedSpeakables.map((entry, idx) => (
+                        <div key={`${entry.label}-${idx}`} className="flex items-center justify-between rounded border border-slate-200 px-2 py-1.5">
+                          <span className="truncate text-xs text-slate-600">{entry.label}</span>
+                          <LocalizedAudioButton iconOnly locale={entry.locale} textParts={entry.textParts} />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
               )}
             </div>
 

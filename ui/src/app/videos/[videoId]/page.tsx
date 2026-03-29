@@ -4,9 +4,11 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/api";
+import { ApiError, apiRequest } from "@/lib/api";
 import { VideoPreview } from "@/components/video-preview";
 import { Spinner } from "@/components/spinner";
+import { LocalizedAudioButton } from "@/components/localized-audio-button";
+import { extractSpeakableEntries } from "@/lib/content-audio";
 
 type VideoData = {
   video_id: string;
@@ -63,23 +65,47 @@ export default function VideoDetailPage() {
 
   const aiQ = useQuery({
     queryKey: ["ai", videoId],
-    queryFn: () => apiRequest<Record<string, unknown>>(`/ai-results/video/${videoId}`),
+    queryFn: async () => {
+      try {
+        return await apiRequest<Record<string, unknown>>(`/ai-results/video/${videoId}`);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }
+    },
     enabled: !!videoId,
-    retry: false
+    retry: false,
+    refetchInterval: (q) => (q.state.data ? false : 6000)
   });
 
   const reportQ = useQuery({
     queryKey: ["report", videoId],
-    queryFn: () => apiRequest<Record<string, unknown>>(`/reports/video/${videoId}`),
+    queryFn: async () => {
+      try {
+        return await apiRequest<Record<string, unknown>>(`/reports/video/${videoId}`);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }
+    },
     enabled: !!videoId,
-    retry: false
+    retry: false,
+    refetchInterval: (q) => (q.state.data ? false : 6000)
   });
 
   const distQ = useQuery({
     queryKey: ["distribution", videoId],
-    queryFn: () => apiRequest<Array<Record<string, unknown>>>(`/distribution/video/${videoId}`),
+    queryFn: async () => {
+      try {
+        return await apiRequest<Array<Record<string, unknown>>>(`/distribution/video/${videoId}`);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }
+    },
     enabled: !!videoId,
-    retry: false
+    retry: false,
+    refetchInterval: (q) => (q.state.data ? false : 6000)
   });
 
   const jobId = statusQ.data?.job_id;
@@ -131,6 +157,7 @@ export default function VideoDetailPage() {
   };
 
   const aiData = aiQ.data ?? {};
+  const hasAiData = !!aiQ.data && Object.keys(aiData).length > 0;
   const moderation = (aiData.moderation_flags as Record<string, unknown> | undefined) ?? {};
   const moderationFlags = (moderation.flags as Record<string, boolean> | undefined) ?? {};
   const hasSafetyFlags = Object.values(moderationFlags).some(Boolean);
@@ -147,6 +174,14 @@ export default function VideoDetailPage() {
   const compliance = (aiData.compliance as Record<string, unknown> | undefined) ?? {};
   const complianceStatusRaw = String(compliance.status ?? "PENDING");
   const complianceViolations = Array.isArray(compliance.violations) ? (compliance.violations as string[]) : [];
+  const generatedContent = (aiData.generated_content as Record<string, unknown> | undefined) ?? {};
+  const localizedContent = (aiData.localized_content as Record<string, unknown> | undefined) ?? {};
+  const hasGeneratedContent = Object.keys(generatedContent).length > 0;
+  const hasLocalizedContent = Object.keys(localizedContent).length > 0;
+  const generatedKeys = Object.keys(generatedContent).slice(0, 6);
+  const localizedKeys = Object.keys(localizedContent).slice(0, 6);
+  const generatedSpeakables = extractSpeakableEntries(generatedContent, "Generated");
+  const localizedSpeakables = extractSpeakableEntries(localizedContent, "Localized");
   const complianceStatusLabel =
     complianceStatusRaw === "PASS"
       ? "Ready to proceed"
@@ -162,6 +197,8 @@ export default function VideoDetailPage() {
   const reportReady = !!reportQ.data && Object.keys(reportQ.data).length > 0;
   const publishingItems = Array.isArray(distQ.data) ? distQ.data : [];
   const publishingReady = publishingItems.length > 0;
+  const reportSummary = typeof reportQ.data?.summary === "string" ? reportQ.data.summary : "";
+  const reportCreatedAt = typeof reportQ.data?.created_at === "string" ? reportQ.data.created_at : "";
 
   const workflowState = statusQ.data?.state ?? "";
   const nextStepMessage =
@@ -298,9 +335,12 @@ export default function VideoDetailPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <div className="card text-sm">
           <h2 className="mb-2 section-title">Content Insights</h2>
-          {aiQ.isLoading ? (
+          {aiQ.isLoading || !hasAiData ? (
             <div className="flex h-32 items-center justify-center rounded bg-slate-100">
-              <Spinner size="sm" />
+              <span className="inline-flex items-center gap-2 text-sm text-slate-500">
+                <Spinner size="sm" />
+                Insights are being generated...
+              </span>
             </div>
           ) : (
             <div className="space-y-3">
@@ -346,6 +386,62 @@ export default function VideoDetailPage() {
                 )}
               </div>
 
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Generated Content</p>
+                {!hasGeneratedContent ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Content draft is not generated yet. It appears after Human Review 1 and AI Content Prep.
+                  </p>
+                ) : (
+                  <>
+                    <p className="mt-1 font-medium text-slate-800">Content draft is ready</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {generatedKeys.map((k) => (
+                        <span key={k} className="chip">{k}</span>
+                      ))}
+                    </div>
+                    {generatedSpeakables.length > 0 ? (
+                      <div className="mt-2 space-y-1.5">
+                        {generatedSpeakables.map((entry, idx) => (
+                          <div key={`${entry.label}-${idx}`} className="flex items-center justify-between rounded border border-slate-200 px-2 py-1.5">
+                            <span className="truncate text-xs text-slate-600">{entry.label}</span>
+                            <LocalizedAudioButton iconOnly locale={entry.locale} textParts={entry.textParts} />
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Localized Content</p>
+                {!hasLocalizedContent ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Localization output is not generated yet. It appears after AI localization runs.
+                  </p>
+                ) : (
+                  <>
+                    <p className="mt-1 font-medium text-slate-800">Localized content is ready</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {localizedKeys.map((k) => (
+                        <span key={k} className="chip">{k}</span>
+                      ))}
+                    </div>
+                    {localizedSpeakables.length > 0 ? (
+                      <div className="mt-2 space-y-1.5">
+                        {localizedSpeakables.map((entry, idx) => (
+                          <div key={`${entry.label}-${idx}`} className="flex items-center justify-between rounded border border-slate-200 px-2 py-1.5">
+                            <span className="truncate text-xs text-slate-600">{entry.label}</span>
+                            <LocalizedAudioButton iconOnly locale={entry.locale} textParts={entry.textParts} />
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </div>
+
               <details className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-600">
                   View Technical Details
@@ -372,8 +468,15 @@ export default function VideoDetailPage() {
                 </div>
               ) : (
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
-                  <p className="font-medium text-slate-800">Report is available</p>
-                  <p className="mt-1 text-xs text-slate-500">A structured summary has been generated for this video.</p>
+                  <p className="font-medium text-slate-800">Report generated</p>
+                  {reportSummary ? (
+                    <p className="mt-1 text-xs text-slate-700">{reportSummary}</p>
+                  ) : (
+                    <p className="mt-1 text-xs text-slate-500">Report summary is available in technical details.</p>
+                  )}
+                  {reportCreatedAt ? (
+                    <p className="mt-2 text-[11px] text-slate-500">Generated at: {new Date(reportCreatedAt).toLocaleString()}</p>
+                  ) : null}
                 </div>
               )}
               <details className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -402,10 +505,29 @@ export default function VideoDetailPage() {
                 </div>
               ) : (
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
-                  <p className="font-medium text-slate-800">Publishing updates received</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Channel delivery records are available for this video.
-                  </p>
+                  <p className="font-medium text-slate-800">Channel delivery records</p>
+                  <div className="mt-2 space-y-2">
+                    {publishingItems.map((item, idx) => {
+                      const channel = String(item.channel ?? "unknown");
+                      const status = String(item.status ?? "UNKNOWN");
+                      const externalId = item.external_id ? String(item.external_id) : null;
+                      const createdAt = item.created_at ? String(item.created_at) : null;
+                      const errorReason = item.error_reason ? String(item.error_reason) : null;
+                      return (
+                        <div className="rounded border border-slate-200 p-2" key={`${channel}-${idx}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium text-slate-700">{channel}</span>
+                            <span className={status === "SUCCESS" || status === "MOCK_SUCCESS" ? "chip-success" : status === "FAILED" ? "chip-danger" : "chip"}>
+                              {status}
+                            </span>
+                          </div>
+                          {externalId ? <p className="mt-1 text-xs text-slate-500">External ID: {externalId}</p> : null}
+                          {createdAt ? <p className="text-xs text-slate-500">Updated: {new Date(createdAt).toLocaleString()}</p> : null}
+                          {errorReason ? <p className="text-xs text-rose-600">Reason: {errorReason}</p> : null}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
               <details className="rounded-xl border border-slate-200 bg-slate-50 p-3">

@@ -2,7 +2,7 @@ import mimetypes
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -11,36 +11,74 @@ from app.db.session import get_db
 from app.models.entities import ProcessingJob, VideoAsset
 from app.schemas.common import ApiResponse
 from app.schemas.video import JobStatusResponse, UploadCompleteRequest
-from app.core.security import require_roles
+from app.core.security import get_current_user, require_roles
 from app.services import idempotency_service, thumbnail_service, upload_security_service
 from app.services.workflow_service import WorkflowService
 
 
 router = APIRouter(prefix="/videos", tags=["videos"])
 workflow = WorkflowService()
-UPLOAD_DIR = Path(__file__).resolve().parents[4] / "storage" / "uploads"
+SERVICE_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+REPO_ROOT = Path(__file__).resolve().parents[5]
+UPLOAD_DIR = PROJECT_ROOT / "storage" / "uploads"
 UPLOAD_COMPLETE_IDEMPOTENCY_ENDPOINT = "videos.upload.complete.v2"
 UPLOAD_FILE_IDEMPOTENCY_ENDPOINT = "videos.upload.file.v2"
 
 
-def _file_response_or_404(file_path: str | None, fallback_media_type: str = "application/octet-stream"):
+def _resolve_existing_path(file_path: str | None, fallback_dirs: list[Path] | None = None) -> Path | None:
     if not file_path:
-        raise HTTPException(status_code=404, detail="File not available")
+        return None
     p = Path(file_path)
-    if not p.exists() or not p.is_file():
+    if p.exists() and p.is_file():
+        return p
+
+    fallback_dirs = fallback_dirs or []
+    basename = p.name
+    for d in fallback_dirs:
+        candidate = d / basename
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    return None
+
+
+def _file_response_or_404(
+    file_path: str | None,
+    fallback_media_type: str = "application/octet-stream",
+    fallback_dirs: list[Path] | None = None,
+):
+    resolved = _resolve_existing_path(file_path, fallback_dirs=fallback_dirs)
+    if not resolved:
         raise HTTPException(status_code=404, detail="File not found")
-    media_type = mimetypes.guess_type(str(p))[0] or fallback_media_type
-    return FileResponse(path=str(p), media_type=media_type, filename=p.name)
+    media_type = mimetypes.guess_type(str(resolved))[0] or fallback_media_type
+    return FileResponse(path=str(resolved), media_type=media_type, filename=resolved.name)
+
+
+def _upload_fallback_dirs() -> list[Path]:
+    return [
+        SERVICE_ROOT / "storage" / "uploads",
+        PROJECT_ROOT / "storage" / "uploads",
+        REPO_ROOT / "storage" / "uploads",
+    ]
+
+
+def _thumbnail_fallback_dirs() -> list[Path]:
+    return [
+        SERVICE_ROOT / "storage" / "thumbnails",
+        PROJECT_ROOT / "storage" / "thumbnails",
+        REPO_ROOT / "storage" / "thumbnails",
+    ]
 
 
 @router.post("/upload/complete", response_model=ApiResponse)
 def upload_complete(
     payload: UploadCompleteRequest,
     x_idempotency_key: str | None = Header(default=None),
-    _user=Depends(require_roles("uploader", "admin")),
+    user=Depends(require_roles("uploader", "admin")),
     db: Session = Depends(get_db),
 ):
     video_id = f"vid_{uuid4().hex[:12]}"
+    uploader_ref = user.username if user.role == "uploader" else payload.uploader_ref or user.username
     thumbnail_uri = (
         thumbnail_service.generate_thumbnail(video_id=video_id, video_path=payload.storage_uri)
         if payload.storage_uri
@@ -54,7 +92,7 @@ def upload_complete(
 
     video = VideoAsset(
         video_id=video_id,
-        uploader_ref=payload.uploader_ref,
+        uploader_ref=uploader_ref,
         filename=payload.filename,
         content_type=payload.content_type,
         storage_uri=payload.storage_uri,
@@ -85,9 +123,10 @@ async def upload_file(
     idempotency_key: str | None = Form(default=None),
     file: UploadFile = File(...),
     x_idempotency_key: str | None = Header(default=None),
-    _user=Depends(require_roles("uploader", "admin")),
+    user=Depends(require_roles("uploader", "admin")),
     db: Session = Depends(get_db),
 ):
+    uploader_ref_resolved = user.username if user.role == "uploader" else (uploader_ref or user.username)
     idem_key = idempotency_key or x_idempotency_key
     if idem_key:
         existing = idempotency_service.get_record(db, UPLOAD_FILE_IDEMPOTENCY_ENDPOINT, idem_key)
@@ -116,7 +155,7 @@ async def upload_file(
 
     video = VideoAsset(
         video_id=video_id,
-        uploader_ref=uploader_ref,
+        uploader_ref=uploader_ref_resolved,
         filename=file.filename,
         content_type=final_mime,
         storage_uri=str(target_path),
@@ -143,6 +182,48 @@ async def upload_file(
         idempotency_service.store_record(db, UPLOAD_FILE_IDEMPOTENCY_ENDPOINT, idem_key, response)
     return ApiResponse(
         data=response
+    )
+
+
+@router.get("/history", response_model=ApiResponse)
+def list_video_history(
+    uploader_ref: str | None = Query(default=None),
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if user.role not in {"uploader", "admin", "moderator"}:
+        raise HTTPException(status_code=403, detail="Insufficient role")
+
+    target_uploader = uploader_ref
+    if user.role != "admin":
+        target_uploader = user.username
+
+    stmt = select(VideoAsset)
+    if target_uploader:
+        stmt = stmt.where(VideoAsset.uploader_ref == target_uploader)
+    videos = list(db.scalars(stmt.order_by(VideoAsset.created_at.desc())))
+
+    if not videos:
+        return ApiResponse(data=[])
+
+    video_ids = [v.video_id for v in videos]
+    jobs = list(db.scalars(select(ProcessingJob).where(ProcessingJob.video_id.in_(video_ids))))
+    jobs_by_video = {j.video_id: j for j in jobs}
+
+    return ApiResponse(
+        data=[
+            {
+                "video_id": v.video_id,
+                "uploader_ref": v.uploader_ref,
+                "filename": v.filename,
+                "thumbnail_uri": v.thumbnail_uri,
+                "created_at": v.created_at.isoformat(),
+                "job_id": jobs_by_video.get(v.video_id).job_id if jobs_by_video.get(v.video_id) else None,
+                "state": jobs_by_video.get(v.video_id).state.value if jobs_by_video.get(v.video_id) else "UNKNOWN",
+                "priority": jobs_by_video.get(v.video_id).priority.value if jobs_by_video.get(v.video_id) else "UNKNOWN",
+            }
+            for v in videos
+        ]
     )
 
 
@@ -186,7 +267,13 @@ def get_video_thumbnail(video_id: str, _user=Depends(require_roles("uploader", "
     video = db.scalar(select(VideoAsset).where(VideoAsset.video_id == video_id))
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
-    return _file_response_or_404(video.thumbnail_uri, fallback_media_type="image/jpeg")
+    resolved = _resolve_existing_path(video.thumbnail_uri, fallback_dirs=_thumbnail_fallback_dirs())
+    if not resolved:
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+    if video.thumbnail_uri != str(resolved):
+        video.thumbnail_uri = str(resolved)
+        db.commit()
+    return _file_response_or_404(str(resolved), fallback_media_type="image/jpeg")
 
 
 @router.get("/{video_id}/stream")
@@ -194,4 +281,10 @@ def stream_video(video_id: str, _user=Depends(require_roles("uploader", "moderat
     video = db.scalar(select(VideoAsset).where(VideoAsset.video_id == video_id))
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
-    return _file_response_or_404(video.storage_uri, fallback_media_type=video.content_type or "video/mp4")
+    resolved = _resolve_existing_path(video.storage_uri, fallback_dirs=_upload_fallback_dirs())
+    if not resolved:
+        raise HTTPException(status_code=404, detail="Video source not found in storage")
+    if video.storage_uri != str(resolved):
+        video.storage_uri = str(resolved)
+        db.commit()
+    return _file_response_or_404(str(resolved), fallback_media_type=video.content_type or "video/mp4")

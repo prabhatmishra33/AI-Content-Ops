@@ -8,16 +8,19 @@ import { apiRequest } from "@/lib/api";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import type { ReviewTask } from "@/lib/types";
 import { Spinner } from "@/components/spinner";
+import { VideoThumb } from "@/components/video-thumb";
+import { useSessionStore } from "@/store/session-store";
 
 export default function ReviewsQueuePage() {
+  const user = useSessionStore((s) => s.user);
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   const [gate, setGate] = useState<"" | "GATE_1" | "GATE_2">(
     (searchParams.get("gate") as "" | "GATE_1" | "GATE_2") || ""
   );
-  const [status, setStatus] = useState(searchParams.get("status") || "PENDING");
-  const [reviewerRef, setReviewerRef] = useState(searchParams.get("reviewer_ref") || "moderator_1");
+  const [status, setStatus] = useState(searchParams.get("status") || "ALL");
+  const [reviewerRef, setReviewerRef] = useState(searchParams.get("reviewer_ref") || user?.username || "moderator");
   const [error, setError] = useState<string | null>(null);
   const [claimingTaskId, setClaimingTaskId] = useState<string | null>(null);
   const queryClient = useQueryClient();
@@ -37,7 +40,7 @@ export default function ReviewsQueuePage() {
     queryKey: ["review-tasks", gate, status],
     queryFn: () =>
       apiRequest<ReviewTask[]>(
-        `/reviews/tasks?status=${encodeURIComponent(status)}${gate ? `&gate=${encodeURIComponent(gate)}` : ""}`
+        `/reviews/tasks?${status !== "ALL" ? `status=${encodeURIComponent(status)}&` : ""}${gate ? `gate=${encodeURIComponent(gate)}` : ""}`
       ),
     refetchInterval: 5000
   });
@@ -61,6 +64,13 @@ export default function ReviewsQueuePage() {
   const queueContext = encodeURIComponent(
     `/reviews/queue?status=${encodeURIComponent(status)}${gate ? `&gate=${encodeURIComponent(gate)}` : ""}&reviewer_ref=${encodeURIComponent(reviewerRef)}`
   );
+
+  const tasks = (q.data ?? []).slice().sort((a, b) => {
+    if (status === "DONE") {
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    }
+    return 0;
+  });
 
   return (
     <div className="space-y-4">
@@ -99,6 +109,7 @@ export default function ReviewsQueuePage() {
             <option value="PENDING">PENDING</option>
             <option value="IN_PROGRESS">IN_PROGRESS</option>
             <option value="DONE">DONE</option>
+            <option value="ALL">ALL</option>
           </select>
         </div>
         <div>
@@ -115,6 +126,13 @@ export default function ReviewsQueuePage() {
       </div>
 
       {error ? <div className="card"><span className="chip-danger">{error}</span></div> : null}
+      {q.isError ? (
+        <div className="card">
+          <span className="chip-danger">
+            {q.error instanceof Error ? q.error.message : "Failed to load review items"}
+          </span>
+        </div>
+      ) : null}
 
       <div className="table-shell">
         <table>
@@ -122,7 +140,7 @@ export default function ReviewsQueuePage() {
             <tr>
               <th>Task</th>
               <th>Process</th>
-              <th>Video</th>
+              <th>Preview</th>
               <th>Stage</th>
               <th>Urgency</th>
               <th>Status</th>
@@ -141,11 +159,22 @@ export default function ReviewsQueuePage() {
                 </td>
               </tr>
             ) : null}
-            {(q.data ?? []).map((t) => (
+            {!q.isLoading && !q.isError && tasks.length === 0 ? (
+              <tr>
+                <td className="py-8 text-center text-sm text-slate-500" colSpan={8}>
+                  No review items found for the selected filters.
+                </td>
+              </tr>
+            ) : null}
+            {tasks.map((t) => (
               <tr key={t.task_id}>
                 <td>{t.task_id}</td>
                 <td>{t.job_id}</td>
-                <td>{t.video_id}</td>
+                <td>
+                  <Link href={`/videos/${t.video_id}?from=${queueContext}`} title={`Open video ${t.video_id}`}>
+                    <VideoThumb videoId={t.video_id} />
+                  </Link>
+                </td>
                 <td><span className="chip">{t.gate}</span></td>
                 <td><span className="chip">{t.priority}</span></td>
                 <td>{t.status === "PENDING" ? <span className="chip-warn">{t.status}</span> : <span className="chip-success">{t.status}</span>}</td>

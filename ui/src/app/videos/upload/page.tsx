@@ -7,9 +7,11 @@ import { generateIdempotencyKey } from "@/lib/idempotency";
 import type { VideoUploadResponse } from "@/lib/types";
 import { VideoPreview } from "@/components/video-preview";
 import { Spinner } from "@/components/spinner";
+import { useSessionStore } from "@/store/session-store";
 
 export default function UploadVideoPage() {
-  const [uploaderRef, setUploaderRef] = useState("demo_user_1");
+  const user = useSessionStore((s) => s.user);
+  const uploaderRef = user?.username ?? "";
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<VideoUploadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -17,6 +19,10 @@ export default function UploadVideoPage() {
 
   const onUpload = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!uploaderRef) {
+      setError("Unable to detect logged-in user. Please login again.");
+      return;
+    }
     if (!file) {
       setError("Please select a file");
       return;
@@ -54,7 +60,7 @@ export default function UploadVideoPage() {
       <form className="card space-y-3" onSubmit={onUpload}>
         <div>
           <label className="label">Your User ID</label>
-          <input className="input mt-1" value={uploaderRef} onChange={(e) => setUploaderRef(e.target.value)} />
+          <input className="input mt-1 bg-slate-50 text-slate-600" value={uploaderRef} readOnly />
         </div>
         <div>
           <label className="label">Video File</label>

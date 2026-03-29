@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiBlob } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { Spinner } from "@/components/spinner";
 
 type Props = {
@@ -35,7 +36,13 @@ export function VideoPreview({ videoId, className }: Props) {
         videoObj = URL.createObjectURL(v);
         if (isMounted) setVideoUrl(videoObj);
       } catch (e) {
-        if (isMounted) setError(e instanceof Error ? e.message : "Preview unavailable");
+        if (isMounted) {
+          if (e instanceof ApiError && e.status === 404) {
+            setError("Video file is not available in storage yet.");
+          } else {
+            setError("Video preview is currently unavailable.");
+          }
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
