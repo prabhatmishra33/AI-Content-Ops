@@ -1,4 +1,4 @@
-# AI Content Ops Backend (Phase 1 Implementation)
+# Trust-Driven AI Enterprise Content Operations Platform (Phase 1 Implementation)
 
 This backend implements the core end-to-end workflow discussed in the design:
 
