@@ -6,12 +6,12 @@ import { useEffect, useRef, useState } from "react";
 import { useSessionStore } from "@/store/session-store";
 import { Spinner } from "@/components/spinner";
 
-type NavItem = { href: string; label: string; roles: Array<"uploader" | "moderator" | "admin"> };
+type NavItem = { href: string; label: string; labelByRole?: Partial<Record<"uploader" | "moderator" | "admin", string>>; roles: Array<"uploader" | "moderator" | "admin"> };
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Home", roles: ["uploader", "moderator", "admin"] },
   { href: "/videos/upload", label: "Submit Video", roles: ["uploader", "admin"] },
-  { href: "/videos/history", label: "My Videos", roles: ["uploader", "admin"] },
+  { href: "/videos/history", label: "My Videos", labelByRole: { admin: "Uploaded Videos", moderator: "Uploaded Videos" }, roles: ["uploader", "admin"] },
   { href: "/reviews/queue", label: "Review Inbox", roles: ["moderator", "admin"] },
   { href: "/profile/wallet", label: "Rewards", roles: ["uploader", "admin"] },
   { href: "/ops/policies", label: "Rules", roles: ["admin"] },
@@ -166,7 +166,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   }, LOADER_DELAY_MS);
                 }}
               >
-                {n.label}
+                {n.labelByRole?.[user.role] ?? n.label}
               </Link>
             ))}
           </nav>

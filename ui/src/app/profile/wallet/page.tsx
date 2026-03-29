@@ -20,7 +20,7 @@ type AdminRewardsOverview = {
 
 export default function WalletPage() {
   const user = useSessionStore((s) => s.user);
-  const [uploaderRef, setUploaderRef] = useState(user?.username ?? "");
+  const [uploaderRef] = useState(user?.username ?? "");
   const [userFilter, setUserFilter] = useState("");
 
   const q = useQuery({
@@ -41,8 +41,13 @@ export default function WalletPage() {
 
   return (
     <div className="space-y-4">
-      <div className="card">
-        <h1 className="text-xl font-semibold">Wallet & Rewards</h1>
+      <div className="hero">
+        <h1 className="text-xl font-semibold tracking-tight">Wallet &amp; Rewards</h1>
+        <p className="mt-1 text-sm text-blue-100">
+          {user?.role === "uploader"
+            ? "Your earned points from approved video submissions."
+            : "Manage and review all contributor rewards."}
+        </p>
       </div>
 
       {user?.role === "admin" ? (
@@ -107,30 +112,47 @@ export default function WalletPage() {
         </>
       ) : (
         <>
-          <div className="card">
-            <label className="label">Your User ID</label>
-            <input className="input mt-1 max-w-sm bg-slate-50 text-slate-600" value={uploaderRef} readOnly />
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="card text-center">
+              <p className="text-sm font-medium text-slate-500">Your Balance</p>
+              <p className="mt-2 text-4xl font-bold tracking-tight text-brand-700">
+                {q.isLoading ? <Spinner size="sm" /> : (q.data?.balance_points ?? 0)}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">reward points</p>
+            </div>
+            <div className="card flex flex-col justify-center">
+              <p className="text-sm font-medium text-slate-500">Total Transactions</p>
+              <p className="mt-2 text-4xl font-bold tracking-tight">
+                {q.isLoading ? <Spinner size="sm" /> : (q.data?.transactions?.length ?? 0)}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">approved videos rewarded</p>
+            </div>
           </div>
           <div className="card">
-            <p className="text-sm text-slate-500">Balance</p>
-            <p className="text-2xl font-semibold">{q.isLoading ? <Spinner size="sm" /> : (q.data?.balance_points ?? 0)}</p>
-          </div>
-          <div className="card">
-            <h2 className="mb-2 font-semibold">Transactions</h2>
+            <h2 className="mb-3 font-semibold">Reward History</h2>
             <div className="space-y-2 text-sm">
               {q.isLoading ? (
                 <div className="flex h-20 items-center justify-center rounded bg-slate-100">
                   <Spinner size="sm" />
                 </div>
               ) : null}
+              {!q.isLoading && (q.data?.transactions ?? []).length === 0 ? (
+                <p className="py-6 text-center text-slate-500">
+                  No rewards received yet. Submit and get videos approved to earn points!
+                </p>
+              ) : null}
               {(q.data?.transactions ?? []).map((t, idx) => (
-                <div className="rounded border border-slate-200 p-2" key={`${t.video_id}-${idx}`}>
-                  <div className="font-medium">
-                    {t.points} points ({t.reason})
+                <div
+                  className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-4 py-3"
+                  key={`${t.video_id}-${idx}`}
+                >
+                  <div>
+                    <div className="font-medium text-slate-800 capitalize">{t.reason.replace(/_/g, " ")}</div>
+                    <div className="mt-0.5 text-xs text-slate-500">
+                      {new Date(t.created_at).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+                    </div>
                   </div>
-                  <div className="text-slate-600">
-                    video_id: {t.video_id} | {new Date(t.created_at).toLocaleString()}
-                  </div>
+                  <div className="text-base font-bold text-emerald-600">+{t.points} pts</div>
                 </div>
               ))}
             </div>
