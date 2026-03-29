@@ -1,0 +1,89 @@
+﻿AI Content Ops Backend - Step-by-Step API Run Guide
+
+1) Clone/Open project
+- Open terminal in:
+  C:\Users\poona\Documents\unstop\codebase\backend
+
+2) Install Python (recommended 3.12)
+- Verify:
+  python --version
+
+3) Create and activate virtual environment
+- Commands:
+  python -m venv .venv
+  .\.venv\Scripts\Activate.ps1
+
+4) Install dependencies
+- Command:
+  pip install -r requirements.txt
+
+5) Create environment file
+- Command:
+  Copy-Item .env.example .env
+- Update minimum values in .env:
+  MODEL_PROVIDER=gemini
+  GOOGLE_API_KEY=<your_key>
+  AUTH_DEFAULT_ADMIN_USERNAME=admin
+  AUTH_DEFAULT_ADMIN_PASSWORD=admin123
+
+6) Start Redis (required for async/Celery)
+- Ensure Redis is running on localhost:6379
+- Verify:
+  redis-cli ping
+  (expected: PONG)
+
+7) Optional: Install FFmpeg (thumbnail generation)
+- Verify:
+  ffmpeg -version
+
+8) Start backend + workers
+- Command:
+  .\scripts\up.ps1
+- This starts:
+  - DB migrate/seed
+  - FastAPI server
+  - Celery dedicated workers
+
+9) Open API docs / health
+- Swagger:
+  http://127.0.0.1:8000/docs
+- Live health:
+  http://127.0.0.1:8000/api/v1/health/live
+
+10) Import Postman collection
+- File path:
+  C:\Users\poona\Documents\unstop\codebase\backend\postman\AI_Content_Ops_Backend.postman_collection.json
+
+11) Run APIs in sequence
+- Auth -> Login (Admin)
+  (stores access token in collection variable)
+- Videos -> Upload File (Multipart)
+- Videos -> Get Video Status
+- Reviews -> List Tasks
+- Reviews -> Submit Decision (Gate 1)
+- Reviews -> Submit Decision (Gate 2)
+- AI / Report / Wallet / Audit endpoints for outputs
+
+12) Stop services
+- Command:
+  .\scripts\down.ps1
+
+Troubleshooting
+
+A) Upload returns same response repeatedly
+- Cause: same idempotency key reused
+- Fix: use a new x-idempotency-key for each new upload operation
+
+B) Job remains HOLD
+- Cause: LLM key/quota/rate-limit issue
+- Fix: check audit event LLM_UNAVAILABLE_HOLD, correct key/quota, then trigger:
+  POST /api/v1/workflow/{job_id}/phase-a/async
+
+C) Thumbnail remains null
+- Check API logs for thumbnail_* messages in:
+  C:\Users\poona\Documents\unstop\codebase\backend\.logs\api.out.log
+  C:\Users\poona\Documents\unstop\codebase\backend\.logs\api.err.log
+- If message is thumbnail_ffmpeg_not_found, restart API from a terminal where ffmpeg -version works
+
+D) Async tasks not progressing
+- Ensure Redis is up and workers are running via .\scripts\up.ps1
