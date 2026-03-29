@@ -33,9 +33,10 @@ SCORING_SCHEMA = {
         },
         "final_score": {"type": "NUMBER"},
         "final_level": {"type": "STRING", "enum": ["low", "medium", "high", "very_high"]},
-        "confidence": {"type": "NUMBER"}
+        "confidence": {"type": "NUMBER"},
+        "summary": {"type": "STRING"}
     },
-    "required": ["components", "final_score", "final_level", "confidence"]
+    "required": ["components", "final_score", "final_level", "confidence", "summary"]
 }
 
 
@@ -46,7 +47,7 @@ Analyze the provided video thoroughly. Evaluate the systemic impact of the event
 
 CRITICAL RULES:
 1. CHAIN OF THOUGHT: You must extract concrete 'evidence' FIRST, formulate your 'reasoning' SECOND, assign a numerical 'score' (0.0 to 1.0) THIRD, and finally map the 'level'. Do not assign a score before justifying it.
-2. NEGATIVE CONSTRAINT: If the video is completely unrelated to news, conflict, disasters, or real-world events (e.g., a gaming tutorial, meme, or cartoon), you MUST score all components as 0.0, set all levels to "low", and set confidence to 0.1.
+2. NEGATIVE CONSTRAINT: If the video is completely unrelated to news, conflict, disasters, or real-world events (e.g., a gaming tutorial, meme, or cartoon), you MUST score all components as 0.0, set all levels to "low", set confidence to 0.1, and write a brief summary explaining the video is not a real-world event.
 3. CONTEXTUAL INFERENCE: If the event is clearly part of a broader catastrophic context (e.g., an international war, a major hurricane, a terrorist attack), you MUST factor that broader systemic impact into components like 'environmental', 'economic', and 'political' rather than scoring them in a vacuum based only on the immediate pixels.
 4. MAPPING RULE: You MUST map the numerical 'score' to the correct 'level' category STRICTLY as follows:
    - score >= 0.0 AND < 0.35 -> level: "low"
@@ -65,7 +66,37 @@ COMPONENTS TO SCORE (0.0 to 1.0 scale):
 - environmental: Ecological consequences (minimal: 0.1, local: 0.5, large: 0.85, global: 1.0)
 - longevity: Duration of impact (temporary: 0.2, short_term: 0.4, long_term: 0.8, permanent: 1.0)
 - stakeholder: Affected entities (individual: 0.2, community: 0.5, corporate: 0.7, government: 1.0)
-- credibility: Source reliability (Assume media-level ~0.7 unless it looks explicitly fake or official)
+- credibility: Source reliability (assume media-level ~0.7 unless it looks explicitly fake or clearly official/verified)
+
+FINAL SCORE CALCULATION:
+Compute 'final_score' as a weighted average of the 10 component scores using the weights below:
+  scale       × 0.20
+  severity    × 0.20
+  urgency     × 0.10
+  economic    × 0.10
+  political   × 0.10
+  social      × 0.10
+  environmental × 0.05
+  longevity   × 0.05
+  stakeholder × 0.05
+  credibility × 0.05
+  ─────────────────────
+  total weight = 1.00
+
+Example: if scale=0.75, severity=0.70, urgency=0.90, economic=0.40, political=0.60, social=0.50, environmental=0.10, longevity=0.40, stakeholder=0.70, credibility=0.70:
+  final_score = (0.75×0.20) + (0.70×0.20) + (0.90×0.10) + (0.40×0.10) + (0.60×0.10) + (0.50×0.10) + (0.10×0.05) + (0.40×0.05) + (0.70×0.05) + (0.70×0.05)
+  final_score = 0.150 + 0.140 + 0.090 + 0.040 + 0.060 + 0.050 + 0.005 + 0.020 + 0.035 + 0.035 = 0.625
+
+Apply the MAPPING RULE above to derive 'final_level' from 'final_score'.
+
+CONFIDENCE FIELD:
+Set 'confidence' (0.0 to 1.0) to reflect how strongly the video evidence supports your scores:
+  - 0.9–1.0: Clear, unambiguous footage with verified context
+  - 0.7–0.9: Strong visual evidence, context mostly clear
+  - 0.5–0.7: Moderate evidence, some inference required
+  - 0.3–0.5: Limited evidence, significant inference
+  - 0.1–0.3: Weak or ambiguous evidence, low certainty
+  - 0.1:     Non-news or irrelevant content (see NEGATIVE CONSTRAINT)
 """
 
 
