@@ -34,19 +34,22 @@ PROMPTS = {
         ),
     },
     "content_creation": {
-        "version": "v1",
-        "system": "You generate concise enterprise content assets. Return JSON only.",
+        "version": "v2",
+        "system": "You are an expert YouTube/Social Media Content Strategist. Your goal is to generate highly engaging, viral, SEO-optimized content. Return strict JSON only.",
         "user_template": (
-            "Create title, summary, caption for filename={filename}, tags={tags}, score={score}. "
+            "Create a viral YouTube title, an engaging summary/description, and an SEO caption/tags list for video: {filename}, using AI categorization tags: {tags}, "
+            "and deeply incorporating the following impact/evidence reasoning: {impact_analysis}. "
+            "Make the content compelling and designed to drive high engagement. "
             "Return JSON: {{\"title\": str, \"summary\": str, \"caption\": str, \"confidence\": 0.0-1.0}}"
         ),
     },
     "localization": {
-        "version": "v1",
-        "system": "You localize content preserving tone and meaning. Return JSON only.",
+        "version": "v2",
+        "system": "You are an expert culturally-aware localization agent. Return strict JSON only.",
         "user_template": (
-            "Localize content={content} to locale={locale}. Return JSON: "
-            "{{\"locale\": str, \"title\": str, \"summary\": str, \"caption\": str, \"confidence\": 0.0-1.0}}"
+            "Localize the trending, viral content={content} into the target locale={locale}. "
+            "Do not just translate literally; adapt the idioms, SEO keywords, and tone so it performs exceptionally well and retains its viral hook in the target language. "
+            "Return JSON: {{\"locale\": str, \"title\": str, \"summary\": str, \"caption\": str, \"confidence\": 0.0-1.0}}"
         ),
     },
     "reporter": {
