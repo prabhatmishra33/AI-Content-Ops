@@ -1,0 +1,158 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-a: #f6f9fc;
+    --bg-b: #e8f4ff;
+    --surface: #ffffff;
+    --surface-2: #f8fbff;
+    --text: #0f172a;
+    --muted: #5b6477;
+    --border: #d9e2f0;
+    --brand: #0c8a7a;
+    --brand-strong: #0a5f56;
+    --accent: #1e63ff;
+    --danger: #c43b3b;
+  }
+}
+
+body {
+  color: var(--text);
+  background:
+    radial-gradient(1200px 500px at -5% -10%, #d8ecff 0%, rgba(216, 236, 255, 0) 60%),
+    radial-gradient(900px 450px at 110% -10%, #d3f4ed 0%, rgba(211, 244, 237, 0) 62%),
+    linear-gradient(180deg, var(--bg-b) 0%, var(--bg-a) 28%, #f8fafc 100%);
+  min-height: 100vh;
+}
+
+.card {
+  @apply rounded-2xl border p-5 shadow-sm;
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+  border-color: var(--border);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.hero {
+  @apply rounded-2xl border p-6 shadow-sm;
+  border-color: #cfe2ff;
+  background:
+    linear-gradient(130deg, #0e2d4f 0%, #123e70 52%, #165891 100%);
+  color: #ecf6ff;
+}
+
+.section-title {
+  @apply text-lg font-semibold tracking-tight;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.chip {
+  @apply inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold;
+  border-color: #d2d9e8;
+  background: #f6f8fc;
+  color: #374151;
+}
+
+.chip-success {
+  @apply chip;
+  border-color: #b4e4d0;
+  background: #eafaf2;
+  color: #0e6a4a;
+}
+
+.chip-warn {
+  @apply chip;
+  border-color: #f3dcaa;
+  background: #fff6df;
+  color: #915f06;
+}
+
+.chip-danger {
+  @apply chip;
+  border-color: #f3c8c8;
+  background: #fff0f0;
+  color: #9b2121;
+}
+
+.btn {
+  @apply inline-flex h-10 items-center justify-center rounded-lg px-3.5 py-2 text-sm font-semibold leading-none transition;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.btn-primary {
+  @apply btn text-white;
+  background: linear-gradient(140deg, var(--brand) 0%, var(--brand-strong) 100%);
+  box-shadow: 0 6px 16px rgba(12, 138, 122, 0.28);
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(10, 95, 86, 0.3);
+}
+
+.btn:disabled,
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-secondary {
+  @apply btn border text-slate-700 hover:bg-slate-50;
+  border-color: var(--border);
+  background: #fff;
+}
+
+.input {
+  @apply w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none transition;
+  border-color: #cbd5e1;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.input:focus {
+  border-color: #2e79ff;
+  box-shadow: 0 0 0 3px rgba(46, 121, 255, 0.15);
+}
+
+.label {
+  @apply text-sm font-semibold tracking-tight;
+  color: #334155;
+}
+
+.table-shell {
+  @apply overflow-x-auto rounded-2xl border bg-white;
+  border-color: var(--border);
+}
+
+.table-shell table {
+  @apply min-w-full text-sm;
+}
+
+.table-shell thead {
+  background: #f4f7fc;
+}
+
+.table-shell th {
+  @apply px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600;
+}
+
+.table-shell td {
+  @apply px-3 py-3 text-slate-700;
+}
+
+.table-shell tr + tr {
+  border-top: 1px solid #ecf1f7;
+}
+
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}

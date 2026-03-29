@@ -1,0 +1,220 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useParams, useSearchParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/api";
+import { generateIdempotencyKey } from "@/lib/idempotency";
+import type { ReviewTask } from "@/lib/types";
+import { Spinner } from "@/components/spinner";
+
+type Decision = "APPROVE" | "REJECT";
+
+export default function ReviewTaskDetailPage() {
+  const params = useParams<{ taskId: string }>();
+  const searchParams = useSearchParams();
+  const taskId = params.taskId;
+  const returnTo = searchParams.get("from") || "/reviews/queue";
+  const [reviewerRef, setReviewerRef] = useState("moderator_1");
+  const [decision, setDecision] = useState<Decision>("APPROVE");
+  const [notes, setNotes] = useState("approved");
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const tasksQ = useQuery({
+    queryKey: ["task-detail-list"],
+    queryFn: () => apiRequest<ReviewTask[]>("/reviews/tasks"),
+    refetchInterval: 5000
+  });
+
+  const task = useMemo(() => (tasksQ.data ?? []).find((t) => t.task_id === taskId), [tasksQ.data, taskId]);
+
+  const aiQ = useQuery({
+    queryKey: ["task-ai", task?.video_id],
+    queryFn: () => apiRequest<Record<string, unknown>>(`/ai-results/video/${task?.video_id}`),
+    enabled: !!task?.video_id,
+    retry: false
+  });
+
+  const aiData = aiQ.data ?? {};
+  const moderation = (aiData.moderation_flags as Record<string, unknown> | undefined) ?? {};
+  const moderationFlags = (moderation.flags as Record<string, boolean> | undefined) ?? {};
+  const hasSafetyFlags = Object.values(moderationFlags).some(Boolean);
+  const moderationConfidence = Number(moderation.confidence ?? 0);
+
+  const tags = (aiData.tags as Record<string, unknown> | undefined) ?? {};
+  const primaryCategory = String(tags.primary_category ?? "Not available yet");
+  const topicTags = Array.isArray(tags.tags) ? (tags.tags as string[]).slice(0, 5) : [];
+
+  const impactScore = Number(aiData.impact_score ?? 0);
+  const impactPct = Math.max(0, Math.min(100, Math.round(impactScore * 100)));
+  const impactLabel = impactScore >= 0.7 ? "High Reach Potential" : impactScore >= 0.3 ? "Moderate Reach Potential" : "Low Reach Potential";
+
+  const compliance = (aiData.compliance as Record<string, unknown> | undefined) ?? {};
+  const complianceStatusRaw = String(compliance.status ?? "PENDING");
+  const complianceViolations = Array.isArray(compliance.violations) ? (compliance.violations as string[]) : [];
+  const complianceStatusLabel =
+    complianceStatusRaw === "PASS"
+      ? "Ready to proceed"
+      : complianceStatusRaw === "PASS_WITH_WARNINGS"
+        ? "Proceed with caution"
+        : complianceStatusRaw === "FAIL"
+          ? "Needs correction"
+          : "Under review";
+
+  const confidenceLabel =
+    moderationConfidence >= 0.8 ? "High confidence" : moderationConfidence >= 0.5 ? "Medium confidence" : "Low confidence";
+
+  const submitDecision = async () => {
+    if (!task) return;
+    setError(null);
+    setSuccess(null);
+    setSubmitting(true);
+    try {
+      const data = await apiRequest<{
+        task_id: string;
+        gate: string;
+        decision: string;
+        next_actions: string[];
+      }>(`/reviews/tasks/${task.task_id}/decision?auto_progress=true&async_mode=true`, {
+        method: "POST",
+        body: { reviewer_ref: reviewerRef, decision, notes },
+        idempotencyKey: generateIdempotencyKey(`decision-${task.task_id}`)
+      });
+      setSuccess(`Decision submitted for ${data.gate}: ${data.decision}`);
+      await tasksQ.refetch();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to submit");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="hero">
+        <h1 className="text-2xl font-semibold tracking-tight">Review Decision</h1>
+        <p className="mt-1 text-sm text-blue-100">Review content context and submit an approval decision.</p>
+        <div className="mt-3 flex items-center gap-2">
+          <span className="chip border-blue-200/40 bg-white/15 text-blue-50">Task ID: {taskId}</span>
+          <Link className="btn-secondary border-white/40 bg-white/10 text-white hover:bg-white/20" href={returnTo}>
+            Back to Queue
+          </Link>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="card min-w-0 space-y-2 text-sm">
+          <h2 className="section-title">Task Context</h2>
+          <p>Review Item: {task?.task_id ?? "-"}</p>
+          <p>Video: {task?.video_id ?? "-"}</p>
+          <p>Process: {task?.job_id ?? "-"}</p>
+          <p>Stage: {task?.gate ?? "-"}</p>
+          <p>Status: {task?.status ?? "-"}</p>
+          {task?.video_id ? (
+            <Link className="text-brand-700 underline" href={`/videos/${task.video_id}?from=${encodeURIComponent(returnTo)}`}>
+              Open video timeline
+            </Link>
+          ) : null}
+        </div>
+        <div className="card min-w-0 space-y-3">
+          <h2 className="section-title">Submit Decision</h2>
+          <div>
+            <label className="label">Reviewer ID</label>
+            <input className="input mt-1" value={reviewerRef} onChange={(e) => setReviewerRef(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Decision</label>
+            <select className="input mt-1" value={decision} onChange={(e) => setDecision(e.target.value as Decision)}>
+              <option value="APPROVE">APPROVE</option>
+              <option value="REJECT">REJECT</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">Notes</label>
+            <textarea className="input mt-1 min-h-20" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+          {error ? <span className="chip-danger">{error}</span> : null}
+          {success ? <span className="chip-success">{success}</span> : null}
+          <button className="btn-primary" disabled={submitting} onClick={submitDecision}>
+            {submitting ? (
+              <span className="inline-flex items-center gap-2">
+                <Spinner size="sm" className="border-white/40 border-t-white" />
+                Submitting...
+              </span>
+            ) : (
+              "Submit"
+            )}
+          </button>
+        </div>
+      </div>
+
+      <div className="card min-w-0 text-sm">
+        <h2 className="mb-2 section-title">Content Insights</h2>
+        {aiQ.isLoading ? (
+          <div className="flex h-32 items-center justify-center rounded bg-slate-100">
+            <span className="inline-flex items-center gap-2 text-sm text-slate-500">
+              <Spinner size="sm" />
+              Loading context...
+            </span>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Safety Check</p>
+              <p className="mt-1 font-medium text-slate-800">
+                {hasSafetyFlags ? "Potential harmful signals detected" : "No harmful signals detected"}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">{confidenceLabel}</p>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Topic Understanding</p>
+              <p className="mt-1 font-medium text-slate-800">{primaryCategory}</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {topicTags.length === 0 ? <span className="text-xs text-slate-500">No topic tags yet</span> : null}
+                {topicTags.map((t) => (
+                  <span key={t} className="chip">{t}</span>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Impact Potential</p>
+              <p className="mt-1 font-medium text-slate-800">{impactLabel}</p>
+              <div className="mt-2 h-2 rounded-full bg-slate-200">
+                <div className="h-2 rounded-full bg-blue-500" style={{ width: `${impactPct}%` }} />
+              </div>
+              <p className="mt-1 text-xs text-slate-500">Estimated impact score: {impactPct}%</p>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Policy Readiness</p>
+              <p className="mt-1 font-medium text-slate-800">{complianceStatusLabel}</p>
+              {complianceViolations.length > 0 ? (
+                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-600">
+                  {complianceViolations.slice(0, 3).map((v, idx) => (
+                    <li key={`${idx}-${v}`}>{v}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-xs text-slate-500">No policy issues reported.</p>
+              )}
+            </div>
+
+            <details className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-600">
+                View Technical Details
+              </summary>
+              <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-white p-2 text-xs">
+                {JSON.stringify(aiQ.data ?? {}, null, 2)}
+              </pre>
+            </details>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
