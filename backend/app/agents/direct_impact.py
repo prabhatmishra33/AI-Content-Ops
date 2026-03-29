@@ -49,12 +49,13 @@ CRITICAL RULES:
 1. CHAIN OF THOUGHT: You must extract concrete 'evidence' FIRST, formulate your 'reasoning' SECOND, assign a numerical 'score' (0.0 to 1.0) THIRD, and finally map the 'level'. Do not assign a score before justifying it.
 2. NEGATIVE CONSTRAINT: If the video is completely unrelated to news, conflict, disasters, or real-world events (e.g., a gaming tutorial, meme, or cartoon), you MUST score all components as 0.0, set all levels to "low", set confidence to 0.1, and write a brief summary explaining the video is not a real-world event.
 3. CONTEXTUAL INFERENCE: If the event is clearly part of a broader catastrophic context (e.g., an international war, a major hurricane, a terrorist attack), you MUST factor that broader systemic impact into components like 'environmental', 'economic', and 'political' rather than scoring them in a vacuum based only on the immediate pixels.
-4. MAPPING RULE: You MUST map the numerical 'score' to the correct 'level' category STRICTLY as follows:
+4. MAPPING RULE: You MUST map any numerical score to the correct 'level' category STRICTLY as follows:
    - score >= 0.0 AND < 0.35 -> level: "low"
    - score >= 0.35 AND < 0.65 -> level: "medium"
    - score >= 0.65 AND < 0.85 -> level: "high"
    - score >= 0.85 -> level: "very_high"
 5. Do not guess numbers randomly. If evidence is missing for a specific component, score it low and reduce your final confidence.
+6. SUMMARY: Write a 1-2 sentence human-readable summary of the overall event and its assessed impact level.
 
 COMPONENTS TO SCORE (0.0 to 1.0 scale):
 - scale: Geographic and population spread (local: 0.1, city: 0.3, state: 0.5, national: 0.75, global: 1.0)
