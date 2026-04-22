@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import ai_results, audit, auth, distribution, health, ops, policies, reports, rewards, reviews, videos, workflow
+from app.api.routes import ai_results, audio_news, audit, auth, distribution, health, ops, policies, reports, rewards, reviews, videos, workflow
 from app.core.config import settings
 from app.core.observability import configure_logging, observability_middleware
 from app.db.base import Base
@@ -34,6 +34,7 @@ def create_app() -> FastAPI:
     app.include_router(ops.router, prefix="/api/v1")
     app.include_router(rewards.router, prefix="/api/v1")
     app.include_router(audit.router, prefix="/api/v1")
+    app.include_router(audio_news.router, prefix="/api/v1")
 
     return app
 

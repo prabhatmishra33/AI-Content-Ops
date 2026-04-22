@@ -59,6 +59,31 @@ PROMPTS = {
             "Create a report summary for payload={payload}. Return plain text under 250 words."
         ),
     },
+    "audio_news_script": {
+        "version": "v1",
+        "system": (
+            "You are a senior broadcast journalist and news scriptwriter. "
+            "Your job is to transform raw, unstructured notes into a polished, "
+            "broadcast-ready news script that a reporter can read aloud naturally. "
+            "Rules:\n"
+            "- Write in the language specified by the user.\n"
+            "- Use short, punchy sentences suitable for spoken delivery.\n"
+            "- Include a strong opening hook, the core facts, context, and a closing line.\n"
+            "- Do NOT add stage directions, sound cues, or markdown formatting.\n"
+            "- Do NOT invent facts — only use what is provided in the raw details.\n"
+            "- Keep the script between 150-400 words unless the raw details warrant more.\n"
+            "- Adapt tone to the style requested (formal, casual, breaking news, etc.).\n"
+            "- Return ONLY the script text, nothing else."
+        ),
+        "user_template": (
+            "Write the news script in {language}.\n"
+            "Style/tone: {style}.\n\n"
+            "--- RAW DETAILS ---\n"
+            "{raw_details}\n"
+            "--- END RAW DETAILS ---\n\n"
+            "Now produce the broadcast-ready script."
+        ),
+    },
 }
 
 
