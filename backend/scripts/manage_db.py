@@ -18,7 +18,7 @@ from app.models.entities import ThresholdPolicy
 
 def migrate() -> None:
     Base.metadata.create_all(bind=engine)
-    # Lightweight forward-compatible SQLite migration for new nullable columns.
+    # Lightweight forward-compatible SQLite migration for existing DB files.
     if settings.database_url.startswith("sqlite:///"):
         with engine.begin() as conn:
             cols = conn.execute(text("PRAGMA table_info(video_assets)")).fetchall()
@@ -26,6 +26,49 @@ def migrate() -> None:
             if "thumbnail_uri" not in col_names:
                 conn.execute(text("ALTER TABLE video_assets ADD COLUMN thumbnail_uri VARCHAR(512)"))
                 print("Applied migration: video_assets.thumbnail_uri")
+
+            # Verify processing_jobs.state can store MEDIA_MIX_READY.
+            # Older DBs might have a restrictive CHECK constraint in custom/manual schemas.
+            processing_jobs_sql = conn.execute(
+                text("SELECT sql FROM sqlite_master WHERE type='table' AND name='processing_jobs'")
+            ).scalar()
+            if processing_jobs_sql:
+                sql_upper = str(processing_jobs_sql).upper()
+                if "CHECK" in sql_upper and "MEDIA_MIX_READY" not in sql_upper:
+                    conn.execute(text("ALTER TABLE processing_jobs RENAME TO processing_jobs_old"))
+                    conn.execute(
+                        text(
+                            """
+                            CREATE TABLE processing_jobs (
+                                id INTEGER NOT NULL PRIMARY KEY,
+                                job_id VARCHAR(64) NOT NULL UNIQUE,
+                                video_id VARCHAR(64) NOT NULL,
+                                state VARCHAR(32) NOT NULL,
+                                priority VARCHAR(4) NOT NULL,
+                                attempts INTEGER NOT NULL,
+                                last_error TEXT,
+                                updated_at DATETIME NOT NULL,
+                                FOREIGN KEY(video_id) REFERENCES video_assets (video_id)
+                            )
+                            """
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            """
+                            INSERT INTO processing_jobs (id, job_id, video_id, state, priority, attempts, last_error, updated_at)
+                            SELECT id, job_id, video_id, state, priority, attempts, last_error, updated_at
+                            FROM processing_jobs_old
+                            """
+                        )
+                    )
+                    conn.execute(text("DROP TABLE processing_jobs_old"))
+                    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_processing_jobs_job_id ON processing_jobs(job_id)"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_processing_jobs_video_id ON processing_jobs(video_id)"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_processing_jobs_state ON processing_jobs(state)"))
+                    print("Applied migration: processing_jobs.state compatibility for MEDIA_MIX_READY")
+                else:
+                    print("Checked migration: processing_jobs.state already compatible")
     print("Database schema ensured.")
 
 

@@ -12,10 +12,12 @@ router = APIRouter(prefix="/ai-results", tags=["ai-results"])
 
 
 @router.get("/video/{video_id}", response_model=ApiResponse)
-def get_ai_result(video_id: str, _user=Depends(require_roles("uploader", "moderator", "admin")), db: Session = Depends(get_db)):
+def get_ai_result(video_id: str, _user=Depends(require_roles("moderator", "admin")), db: Session = Depends(get_db)):
     ai = db.scalar(select(AIResult).where(AIResult.video_id == video_id))
     if not ai:
         raise HTTPException(status_code=404, detail="AI result not found")
+    generated_content = ai.generated_content or {}
+    localized_content = ai.localized_content or {}
     return ApiResponse(
         data={
             "video_id": ai.video_id,
@@ -23,8 +25,10 @@ def get_ai_result(video_id: str, _user=Depends(require_roles("uploader", "modera
             "tags": ai.tags,
             "impact_score": ai.impact_score,
             "compliance": ai.compliance,
-            "generated_content": ai.generated_content,
-            "localized_content": ai.localized_content,
+            "generated_content": generated_content,
+            "localized_content": localized_content,
+            "audio_news": generated_content.get("audio_news", {}),
+            "media_mix": localized_content.get("media_mix", {}),
             "updated_at": ai.updated_at.isoformat(),
         }
     )

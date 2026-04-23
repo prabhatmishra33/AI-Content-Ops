@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     tts_model: str = "gemini-3.1-flash-tts-preview"
     tts_default_voice: str = "Kore"
     tts_default_locale: str = "en-IN"
-    tts_script_gen_model: str = "gemini-2.0-flash"
+    tts_script_gen_model: str = "gemini-2.5-flash"
 
     # Gemini-specific config (Google Generative Language API)
     google_api_key: str | None = None

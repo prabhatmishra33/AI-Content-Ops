@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ApiError, apiRequest } from "@/lib/api";
+import { ApiError, apiBlob, apiRequest } from "@/lib/api";
 import { VideoPreview } from "@/components/video-preview";
 import { Spinner } from "@/components/spinner";
 import { LocalizedAudioButton } from "@/components/localized-audio-button";
@@ -27,6 +27,12 @@ type AuditEvent = {
   payload: Record<string, unknown>;
   created_at: string;
 };
+type MediaStatus = {
+  video_id: string;
+  job_state: string;
+  audio?: Record<string, unknown>;
+  mix?: Record<string, unknown>;
+};
 
 type TimelineStage = {
   id: string;
@@ -40,6 +46,7 @@ const STAGES: TimelineStage[] = [
   { id: "phase_a", label: "Initial AI Review", description: "Safety, tags, impact, and policy checks" },
   { id: "gate_1", label: "Human Review 1", description: "First moderator decision" },
   { id: "phase_b", label: "AI Content Prep", description: "Content/localization generation" },
+  { id: "media_mix", label: "Media Mix Ready", description: "AI narration prepared and mixed preview generated" },
   { id: "gate_2", label: "Human Review 2", description: "Final moderator approval" },
   { id: "distribution", label: "Publishing", description: "Channel distribution step" },
   { id: "report", label: "Summary Report", description: "System-generated report artifact" },
@@ -66,6 +73,7 @@ const STATE_LABEL: Record<string, string> = {
   IN_REVIEW_GATE_1: "Under Review",
   IN_REVIEW_GATE_2: "Under Review",
   AI_PHASE_B_DONE: "Under Review",
+  MEDIA_MIX_READY: "Preview prepared",
   DISTRIBUTED: "Almost done!",
 };
 
@@ -104,6 +112,9 @@ export default function VideoDetailPage() {
   const returnTo = searchParams.get("from");
   const user = useSessionStore((s) => s.user);
   const isUploader = user?.role === "uploader";
+  const [retryingMix, setRetryingMix] = useState(false);
+  const [mixedPreviewUrl, setMixedPreviewUrl] = useState<string | null>(null);
+  const [mixedPreviewError, setMixedPreviewError] = useState<string | null>(null);
 
   const videoQ = useQuery({
     queryKey: ["video", videoId],
@@ -162,6 +173,20 @@ export default function VideoDetailPage() {
     retry: false,
     refetchInterval: (q) => (q.state.data ? false : 6000)
   });
+  const mediaQ = useQuery({
+    queryKey: ["media-status", videoId],
+    queryFn: async () => {
+      try {
+        return await apiRequest<MediaStatus>(`/media/${videoId}/status`);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }
+    },
+    enabled: !!videoId && !isUploader,
+    retry: false,
+    refetchInterval: 6000
+  });
 
   const jobId = statusQ.data?.job_id;
   const auditQ = useQuery({
@@ -186,6 +211,7 @@ export default function VideoDetailPage() {
       phase_a: eventTypes.has("PHASE_A_COMPLETED"),
       gate_1: eventTypes.has("GATE_1_DECISION_APPROVE") || eventTypes.has("GATE_1_DECISION_REJECT"),
       phase_b: eventTypes.has("PHASE_B_COMPLETED"),
+      media_mix: eventTypes.has("MEDIA_MIX_READY"),
       gate_2: eventTypes.has("GATE_2_DECISION_APPROVE") || eventTypes.has("GATE_2_DECISION_REJECT"),
       distribution: eventTypes.has("DISTRIBUTION_COMPLETED") || eventTypes.has("DISTRIBUTION_PARTIAL_OR_FAILED"),
       report: eventTypes.has("REPORT_GENERATED"),
@@ -197,13 +223,14 @@ export default function VideoDetailPage() {
     if (stageId === "phase_a" && isHold) return "current";
     if (stageId === "gate_1" && state === "IN_REVIEW_GATE_1") return "current";
     if (stageId === "phase_b" && state === "AI_PHASE_B_DONE") return "current";
+    if (stageId === "media_mix" && state === "MEDIA_MIX_READY") return "current";
     if (stageId === "gate_2" && state === "IN_REVIEW_GATE_2") return "current";
     if (stageId === "distribution" && state === "DISTRIBUTED") return "current";
     if (stageId === "report" && state === "REPORT_READY") return "current";
     if (stageId === "reward" && state === "COMPLETED") return "done";
 
     if (
-      (isRejected && (stageId === "phase_b" || stageId === "gate_2" || stageId === "distribution" || stageId === "report" || stageId === "reward")) ||
+      (isRejected && (stageId === "phase_b" || stageId === "media_mix" || stageId === "gate_2" || stageId === "distribution" || stageId === "report" || stageId === "reward")) ||
       (isFailed && (stageId === "report" || stageId === "reward"))
     ) {
       return "blocked";
@@ -258,6 +285,8 @@ export default function VideoDetailPage() {
   const reportCreatedAt = typeof reportQ.data?.created_at === "string" ? reportQ.data.created_at : "";
 
   const workflowState = statusQ.data?.state ?? "";
+  const mixState = String(mediaQ.data?.mix?.state ?? "PENDING");
+  const audioState = String(mediaQ.data?.audio?.state ?? "PENDING");
   const nextStepMessage =
     workflowState === "IN_REVIEW_GATE_1"
       ? "Awaiting first moderator decision."
@@ -265,6 +294,8 @@ export default function VideoDetailPage() {
         ? "Awaiting final moderator approval."
         : workflowState === "AI_PHASE_B_DONE"
           ? "AI content preparation is complete. Final review is next."
+          : workflowState === "MEDIA_MIX_READY"
+            ? "Media mix is ready. Final review is next."
           : workflowState === "DISTRIBUTED"
             ? "Publishing is complete. Report and rewards are being finalized."
             : workflowState === "COMPLETED"
@@ -272,6 +303,49 @@ export default function VideoDetailPage() {
               : workflowState === "HOLD"
                 ? "On hold. A moderator action is required to continue."
                 : "Processing is in progress.";
+
+  useEffect(() => {
+    let isMounted = true;
+    let objectUrl: string | null = null;
+    const loadMixedPreview = async () => {
+      if (!videoId || isUploader || mixState !== "READY") {
+        setMixedPreviewUrl(null);
+        setMixedPreviewError(null);
+        return;
+      }
+      setMixedPreviewError(null);
+      try {
+        const blob = await apiBlob(`/media/${videoId}/preview/stream`);
+        objectUrl = URL.createObjectURL(blob);
+        if (isMounted) setMixedPreviewUrl(objectUrl);
+      } catch (err) {
+        if (!isMounted) return;
+        setMixedPreviewUrl(null);
+        if (err instanceof ApiError && err.status === 404) {
+          setMixedPreviewError("Preview in progress");
+        } else {
+          setMixedPreviewError(err instanceof Error ? err.message : "Preview in progress");
+        }
+      }
+    };
+    loadMixedPreview();
+    return () => {
+      isMounted = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [videoId, isUploader, mixState]);
+
+  const retryMediaMix = async () => {
+    if (!videoId) return;
+    setRetryingMix(true);
+    try {
+      await apiRequest(`/media/${videoId}/mix`, { method: "POST" });
+      await mediaQ.refetch();
+      await aiQ.refetch();
+    } finally {
+      setRetryingMix(false);
+    }
+  };
 
   const isRejected = workflowState.includes("REJECTED");
   const isCompleted = workflowState === "COMPLETED";
@@ -460,7 +534,7 @@ export default function VideoDetailPage() {
                     ? "bg-amber-500 ring-amber-200"
                     : st === "blocked"
                       ? "bg-rose-500 ring-rose-200"
-                      : "bg-slate-300 ring-slate-200";
+                    : "bg-slate-300 ring-slate-200";
               const lineClass =
                 st === "done" ? "bg-emerald-300" : st === "current" ? "bg-amber-200" : st === "blocked" ? "bg-rose-200" : "bg-slate-200";
               const tone =
@@ -508,6 +582,56 @@ export default function VideoDetailPage() {
           <p>Latest Issue: {statusQ.data?.last_error ?? "-"}</p>
           <p>Process ID: {statusQ.data?.job_id ?? "-"}</p>
         </div>
+      </div>
+
+      <div className="card text-sm">
+        <h2 className="mb-2 section-title">Media Mix Preview</h2>
+        {mediaQ.isLoading ? (
+          <div className="flex h-24 items-center justify-center rounded bg-slate-100">
+            <span className="inline-flex items-center gap-2 text-sm text-slate-500">
+              <Spinner size="sm" />
+              Loading media status...
+            </span>
+          </div>
+        ) : mediaQ.isError ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-3">
+            <p className="font-medium text-slate-800">Preview in progress</p>
+            <p className="mt-1 text-xs text-slate-500">Media mix is still being prepared.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Narration Audio</p>
+                <p className="mt-1 font-medium text-slate-800">{audioState === "READY" ? "Ready" : "In progress"}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mixed Preview</p>
+                <p className="mt-1 font-medium text-slate-800">{mixState === "READY" ? "Ready" : "Preview in progress"}</p>
+              </div>
+            </div>
+            {mixedPreviewUrl ? (
+              <video className="h-64 w-full rounded-xl border border-slate-200 bg-black shadow-sm" controls preload="metadata" src={mixedPreviewUrl} />
+            ) : (
+              <div className="flex h-24 w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-100 text-sm text-slate-500">
+                Preview in progress
+              </div>
+            )}
+            {mixedPreviewError ? <p className="text-xs text-slate-500">{mixedPreviewError}</p> : null}
+            <div>
+              <button className="btn-secondary" disabled={retryingMix || !videoId} onClick={retryMediaMix}>
+                {retryingMix ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Spinner size="sm" />
+                    Retrying...
+                  </span>
+                ) : (
+                  "Retry Mixed Preview"
+                )}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

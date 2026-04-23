@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/api";
+import { ApiError, apiBlob, apiRequest } from "@/lib/api";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import type { ReviewTask } from "@/lib/types";
 import { Spinner } from "@/components/spinner";
@@ -12,6 +12,12 @@ import { LocalizedAudioButton } from "@/components/localized-audio-button";
 import { extractSpeakableEntries } from "@/lib/content-audio";
 
 type Decision = "APPROVE" | "REJECT";
+type MediaStatus = {
+  video_id: string;
+  job_state: string;
+  audio?: Record<string, unknown>;
+  mix?: Record<string, unknown>;
+};
 
 export default function ReviewTaskDetailPage() {
   const params = useParams<{ taskId: string }>();
@@ -24,6 +30,13 @@ export default function ReviewTaskDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [retryingMix, setRetryingMix] = useState(false);
+  const [mixedPreviewUrl, setMixedPreviewUrl] = useState<string | null>(null);
+  const [mixedPreviewError, setMixedPreviewError] = useState<string | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioLoading, setAudioLoading] = useState(false);
+  const [audioPlaying, setAudioPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const tasksQ = useQuery({
     queryKey: ["task-detail-list"],
@@ -38,6 +51,13 @@ export default function ReviewTaskDetailPage() {
     queryFn: () => apiRequest<Record<string, unknown>>(`/ai-results/video/${task?.video_id}`),
     enabled: !!task?.video_id,
     retry: false
+  });
+  const mediaQ = useQuery({
+    queryKey: ["task-media", task?.video_id],
+    queryFn: () => apiRequest<MediaStatus>(`/media/${task?.video_id}/status`),
+    enabled: !!task?.video_id,
+    retry: false,
+    refetchInterval: 5000
   });
 
   const aiData = aiQ.data ?? {};
@@ -76,6 +96,75 @@ export default function ReviewTaskDetailPage() {
 
   const confidenceLabel =
     moderationConfidence >= 0.8 ? "High confidence" : moderationConfidence >= 0.5 ? "Medium confidence" : "Low confidence";
+  const audioState = String(mediaQ.data?.audio?.state ?? "PENDING");
+  const mixState = String(mediaQ.data?.mix?.state ?? "PENDING");
+  const audioPath = String((aiQ.data?.audio_news as Record<string, unknown> | undefined)?.path ?? "");
+  const audioFilename = audioPath ? audioPath.split(/[\\/]/).pop() ?? "" : "";
+  const aiError = aiQ.error as ApiError | null;
+  const mediaError = mediaQ.error as ApiError | null;
+
+  useEffect(() => {
+    let isMounted = true;
+    let objectUrl: string | null = null;
+    const videoId = task?.video_id;
+
+    const loadMixedPreview = async () => {
+      if (!videoId || mixState !== "READY") {
+        setMixedPreviewUrl(null);
+        setMixedPreviewError(null);
+        return;
+      }
+      setMixedPreviewError(null);
+      try {
+        const blob = await apiBlob(`/media/${videoId}/preview/stream`);
+        objectUrl = URL.createObjectURL(blob);
+        if (isMounted) setMixedPreviewUrl(objectUrl);
+      } catch (err) {
+        if (!isMounted) return;
+        setMixedPreviewUrl(null);
+        if (err instanceof ApiError && err.status === 404) {
+          setMixedPreviewError("Preview in progress");
+        } else {
+          setMixedPreviewError(err instanceof Error ? err.message : "Preview in progress");
+        }
+      }
+    };
+
+    loadMixedPreview();
+    return () => {
+      isMounted = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [task?.video_id, mixState]);
+
+  useEffect(() => {
+    let isMounted = true;
+    let objectUrl: string | null = null;
+
+    const loadAudio = async () => {
+      if (!audioFilename || audioState !== "READY") {
+        setAudioUrl(null);
+        setAudioLoading(false);
+        return;
+      }
+      setAudioLoading(true);
+      try {
+        const blob = await apiBlob(`/audio-news/download?filename=${encodeURIComponent(audioFilename)}`);
+        objectUrl = URL.createObjectURL(blob);
+        if (isMounted) setAudioUrl(objectUrl);
+      } catch {
+        if (isMounted) setAudioUrl(null);
+      } finally {
+        if (isMounted) setAudioLoading(false);
+      }
+    };
+
+    loadAudio();
+    return () => {
+      isMounted = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [audioFilename, audioState]);
 
   const submitDecision = async () => {
     if (!task) return;
@@ -99,6 +188,23 @@ export default function ReviewTaskDetailPage() {
       setError(err instanceof Error ? err.message : "Failed to submit");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const retryMediaMix = async () => {
+    if (!task?.video_id) return;
+    setRetryingMix(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await apiRequest(`/media/${task.video_id}/mix`, { method: "POST" });
+      setSuccess("Media mix retry triggered.");
+      await mediaQ.refetch();
+      await aiQ.refetch();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to retry media mix");
+    } finally {
+      setRetryingMix(false);
     }
   };
 
@@ -161,6 +267,99 @@ export default function ReviewTaskDetailPage() {
         </div>
       </div>
 
+      <div className="card min-w-0 space-y-3 text-sm">
+        <h2 className="section-title">Media Readiness</h2>
+        {mediaQ.isLoading ? (
+          <div className="flex h-24 items-center justify-center rounded bg-slate-100">
+            <span className="inline-flex items-center gap-2 text-sm text-slate-500">
+              <Spinner size="sm" />
+              Loading media status...
+            </span>
+          </div>
+        ) : mediaQ.isError ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-3">
+            <p className="font-medium text-slate-800">
+              {mediaError?.status === 404 ? "Preview in progress" : mediaError?.status === 403 ? "Access restricted" : "Media status unavailable"}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {mediaError?.status === 404
+                ? "Media mix is still being prepared."
+                : mediaError?.status === 403
+                  ? "You don't have permission to access media status."
+                  : "Please retry after a moment."}
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Narration Audio</p>
+                <p className="mt-1 font-medium text-slate-800">{audioState === "READY" ? "Ready" : "In progress"}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    className="btn-secondary"
+                    disabled={!audioUrl || audioLoading}
+                    onClick={async () => {
+                      if (!audioRef.current) return;
+                      await audioRef.current.play();
+                      setAudioPlaying(true);
+                    }}
+                  >
+                    {audioLoading ? <span className="inline-flex items-center gap-2"><Spinner size="sm" /> Loading...</span> : "▶ Play"}
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    disabled={!audioUrl}
+                    onClick={() => {
+                      if (!audioRef.current) return;
+                      audioRef.current.pause();
+                      audioRef.current.currentTime = 0;
+                      setAudioPlaying(false);
+                    }}
+                  >
+                    ■ Stop
+                  </button>
+                  {audioPlaying ? <span className="chip">Playing</span> : null}
+                </div>
+                <audio
+                  ref={audioRef}
+                  onEnded={() => setAudioPlaying(false)}
+                  onPause={() => setAudioPlaying(false)}
+                  onPlay={() => setAudioPlaying(true)}
+                  src={audioUrl ?? undefined}
+                />
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mixed Preview</p>
+                <p className="mt-1 font-medium text-slate-800">{mixState === "READY" ? "Ready" : "Preview in progress"}</p>
+              </div>
+            </div>
+
+            {mixedPreviewUrl ? (
+              <video className="h-64 w-full rounded-xl border border-slate-200 bg-black shadow-sm" controls preload="metadata" src={mixedPreviewUrl} />
+            ) : (
+              <div className="flex h-24 w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-100 text-sm text-slate-500">
+                Preview in progress
+              </div>
+            )}
+            {mixedPreviewError ? <p className="text-xs text-slate-500">{mixedPreviewError}</p> : null}
+
+            <div>
+              <button className="btn-secondary" disabled={retryingMix || !task?.video_id} onClick={retryMediaMix}>
+                {retryingMix ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Spinner size="sm" />
+                    Retrying...
+                  </span>
+                ) : (
+                  "Retry Mixed Preview"
+                )}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
       <div className="card min-w-0 text-sm">
         <h2 className="mb-2 section-title">Content Insights</h2>
         {aiQ.isLoading ? (
@@ -169,6 +368,19 @@ export default function ReviewTaskDetailPage() {
               <Spinner size="sm" />
               Loading context...
             </span>
+          </div>
+        ) : aiQ.isError ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-3">
+            <p className="font-medium text-slate-800">
+              {aiError?.status === 404 ? "Insights are being prepared" : aiError?.status === 403 ? "Access restricted" : "Insights unavailable"}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {aiError?.status === 404
+                ? "AI analysis is still in progress for this video."
+                : aiError?.status === 403
+                  ? "You do not have permission to view this section."
+                  : "Please retry after a moment."}
+            </p>
           </div>
         ) : (
           <div className="space-y-3">

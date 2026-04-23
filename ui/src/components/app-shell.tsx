@@ -97,6 +97,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
   if (!user && pathname !== "/login") return null;
   if (pathname === "/login") return <>{children}</>;
+  const activeUser = user!;
 
   return (
     <div className="min-h-screen">
@@ -126,8 +127,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <p className="text-xs text-slate-500">Review, approve, and publish video content</p>
           </div>
           <div className="flex items-center gap-3 text-sm">
-            <span className="chip">{user?.role}</span>
-            <span className="font-medium">{user?.username}</span>
+            <span className="chip">{activeUser.role}</span>
+            <span className="font-medium">{activeUser.username}</span>
             <button
               className="btn-secondary"
               onClick={() => {
@@ -144,7 +145,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <aside className="card h-fit">
           <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Navigation</div>
           <nav className="space-y-1.5">
-            {NAV_ITEMS.filter((n) => user && n.roles.includes(user.role)).map((n) => (
+            {NAV_ITEMS.filter((n) => n.roles.includes(activeUser.role)).map((n) => (
               <Link
                 key={n.href}
                 className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition ${
@@ -166,7 +167,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   }, LOADER_DELAY_MS);
                 }}
               >
-                {n.labelByRole?.[user.role] ?? n.label}
+                {n.labelByRole?.[activeUser.role] ?? n.label}
               </Link>
             ))}
           </nav>

@@ -60,7 +60,7 @@ def handle_gate_1_task(job_id: str):
     db = SessionLocal()
     try:
         job = workflow.handle_gate_1_result(db, job_id)
-        if job and job.state.value == "AI_PHASE_B_DONE":
+        if job and job.state.value == "MEDIA_MIX_READY":
             create_gate_2_task.apply_async(kwargs={"job_id": job_id}, queue=_review_queue_for_priority(job.priority))
         return {"job_id": job_id, "state": job.state.value if job else "NOT_FOUND"}
     except Exception as exc:

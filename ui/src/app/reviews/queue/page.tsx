@@ -11,6 +11,12 @@ import { Spinner } from "@/components/spinner";
 import { VideoThumb } from "@/components/video-thumb";
 import { useSessionStore } from "@/store/session-store";
 
+type MediaStatus = {
+  video_id: string;
+  audio?: Record<string, unknown>;
+  mix?: Record<string, unknown>;
+};
+
 export default function ReviewsQueuePage() {
   const user = useSessionStore((s) => s.user);
   const searchParams = useSearchParams();
@@ -23,6 +29,7 @@ export default function ReviewsQueuePage() {
   const [reviewerRef, setReviewerRef] = useState(searchParams.get("reviewer_ref") || user?.username || "moderator");
   const [error, setError] = useState<string | null>(null);
   const [claimingTaskId, setClaimingTaskId] = useState<string | null>(null);
+  const [retryingVideoId, setRetryingVideoId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const syncQueryState = (next: { gate?: string; status?: string; reviewer_ref?: string }) => {
@@ -45,6 +52,26 @@ export default function ReviewsQueuePage() {
     refetchInterval: 5000
   });
 
+  const mediaByVideoQ = useQuery({
+    queryKey: ["review-media-status", (q.data ?? []).map((t) => t.video_id).join(",")],
+    enabled: (q.data ?? []).length > 0,
+    queryFn: async () => {
+      const tasks = q.data ?? [];
+      const entries = await Promise.all(
+        tasks.map(async (t) => {
+          try {
+            const media = await apiRequest<MediaStatus>(`/media/${t.video_id}/status`);
+            return [t.video_id, media] as const;
+          } catch {
+            return [t.video_id, null] as const;
+          }
+        })
+      );
+      return Object.fromEntries(entries) as Record<string, MediaStatus | null>;
+    },
+    refetchInterval: 5000
+  });
+
   const claimTask = async (taskId: string) => {
     setError(null);
     setClaimingTaskId(taskId);
@@ -58,6 +85,22 @@ export default function ReviewsQueuePage() {
       setError(err instanceof Error ? err.message : "Claim failed");
     } finally {
       setClaimingTaskId(null);
+    }
+  };
+
+  const retryMix = async (videoId: string) => {
+    setError(null);
+    setRetryingVideoId(videoId);
+    try {
+      await apiRequest(`/media/${videoId}/mix`, { method: "POST" });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["review-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["review-media-status"] })
+      ]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Retry failed");
+    } finally {
+      setRetryingVideoId(null);
     }
   };
 
@@ -142,6 +185,7 @@ export default function ReviewsQueuePage() {
               <th>Process</th>
               <th>Preview</th>
               <th>Stage</th>
+              <th>Media</th>
               <th>Urgency</th>
               <th>Status</th>
               <th>Reviewer</th>
@@ -151,7 +195,7 @@ export default function ReviewsQueuePage() {
           <tbody>
             {q.isLoading ? (
               <tr>
-                <td className="py-8 text-center" colSpan={8}>
+                <td className="py-8 text-center" colSpan={9}>
                   <span className="inline-flex items-center gap-2 text-sm text-slate-500">
                     <Spinner size="sm" />
                     Loading review items...
@@ -161,13 +205,19 @@ export default function ReviewsQueuePage() {
             ) : null}
             {!q.isLoading && !q.isError && tasks.length === 0 ? (
               <tr>
-                <td className="py-8 text-center text-sm text-slate-500" colSpan={8}>
+                <td className="py-8 text-center text-sm text-slate-500" colSpan={9}>
                   No review items found for the selected filters.
                 </td>
               </tr>
             ) : null}
             {tasks.map((t) => (
               <tr key={t.task_id}>
+                {(() => {
+                  const isPending = t.status === "PENDING";
+                  const isAssignedToMe = t.status === "IN_PROGRESS" && t.reviewer_ref === reviewerRef;
+                  const claimDisabled = claimingTaskId === t.task_id || (!isPending && !isAssignedToMe);
+                  return (
+                    <>
                 <td>{t.task_id}</td>
                 <td>{t.job_id}</td>
                 <td>
@@ -176,6 +226,16 @@ export default function ReviewsQueuePage() {
                   </Link>
                 </td>
                 <td><span className="chip">{t.gate}</span></td>
+                <td>
+                  {(() => {
+                    const media = mediaByVideoQ.data?.[t.video_id];
+                    const mixState = String(media?.mix?.state ?? "PENDING");
+                    if (mixState === "READY") return <span className="chip-success">Preview Ready</span>;
+                    if (mixState === "FAILED") return <span className="chip-danger">Needs Retry</span>;
+                    if (media === null) return <span className="chip">In Progress</span>;
+                    return <span className="chip-warn">In Progress</span>;
+                  })()}
+                </td>
                 <td><span className="chip">{t.priority}</span></td>
                 <td>{t.status === "PENDING" ? <span className="chip-warn">{t.status}</span> : <span className="chip-success">{t.status}</span>}</td>
                 <td>{t.reviewer_ref ?? "-"}</td>
@@ -183,7 +243,7 @@ export default function ReviewsQueuePage() {
                   <div className="flex flex-wrap items-center gap-2">
                   <button
                     className="btn-secondary"
-                    disabled={claimingTaskId === t.task_id}
+                    disabled={claimDisabled}
                     onClick={() => claimTask(t.task_id)}
                   >
                     {claimingTaskId === t.task_id ? (
@@ -191,6 +251,8 @@ export default function ReviewsQueuePage() {
                         <Spinner size="sm" />
                         Assigning...
                       </span>
+                    ) : !isPending && !isAssignedToMe ? (
+                      "Not Claimable"
                     ) : (
                       "Assign to Me"
                     )}
@@ -201,8 +263,25 @@ export default function ReviewsQueuePage() {
                   <Link className="btn-secondary" href={`/videos/${t.video_id}?from=${queueContext}`}>
                     View Video Details
                   </Link>
+                  <button
+                    className="btn-secondary"
+                    disabled={retryingVideoId === t.video_id}
+                    onClick={() => retryMix(t.video_id)}
+                  >
+                    {retryingVideoId === t.video_id ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Spinner size="sm" />
+                        Retrying...
+                      </span>
+                    ) : (
+                      "Retry Mixed Preview"
+                    )}
+                  </button>
                   </div>
                 </td>
+                    </>
+                  );
+                })()}
               </tr>
             ))}
           </tbody>

@@ -44,7 +44,7 @@ def test_generate():
         "voice": "Kore",
         "locale": "hi-IN",
         # "tts_model": "gemini-3.1-flash-tts-preview",   # optional override
-        # "script_model": "gemini-2.0-flash",             # optional override
+        # "script_model": "gemini-2.5-flash",             # optional override
     }
 
     print(f"\nSending raw details ({len(payload['raw_details'])} chars)...")

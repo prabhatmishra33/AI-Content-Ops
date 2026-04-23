@@ -47,7 +47,11 @@ def get_task_by_id(db: Session, task_id: str) -> ReviewTask | None:
 
 def claim_task(db: Session, task_id: str, reviewer_ref: str) -> ReviewTask | None:
     task = get_task_by_id(db, task_id)
-    if not task or task.status != "PENDING":
+    if not task:
+        return None
+    if task.status == "IN_PROGRESS" and task.reviewer_ref == reviewer_ref:
+        return task
+    if task.status != "PENDING":
         return None
     task.status = "IN_PROGRESS"
     task.reviewer_ref = reviewer_ref

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 type Props = {
   locale?: string;
@@ -11,6 +11,7 @@ type Props = {
 
 export function LocalizedAudioButton({ locale, textParts, className, iconOnly = false }: Props) {
   const [speaking, setSpeaking] = useState(false);
+  const cancelRequestedRef = useRef(false);
   const supported = typeof window !== "undefined" && "speechSynthesis" in window;
 
   const speakableText = useMemo(
@@ -22,23 +23,85 @@ export function LocalizedAudioButton({ locale, textParts, className, iconOnly = 
     [textParts]
   );
 
-  const onToggleSpeak = () => {
+  const splitIntoChunks = (text: string, maxLen = 220): string[] => {
+    const normalized = text.replace(/\s+/g, " ").trim();
+    if (!normalized) return [];
+    const parts = normalized.split(/(?<=[.!?।])\s+/);
+    const chunks: string[] = [];
+    let current = "";
+    for (const p of parts) {
+      if (!p) continue;
+      if (!current) {
+        current = p;
+        continue;
+      }
+      if (`${current} ${p}`.length <= maxLen) {
+        current = `${current} ${p}`;
+      } else {
+        chunks.push(current);
+        current = p;
+      }
+    }
+    if (current) chunks.push(current);
+    return chunks;
+  };
+
+  const pickVoice = (localeValue: string | undefined): SpeechSynthesisVoice | null => {
+    if (!localeValue) return null;
+    const synth = window.speechSynthesis;
+    const voices = synth.getVoices();
+    if (!voices.length) return null;
+    const target = localeValue.toLowerCase();
+    const exact = voices.find((v) => v.lang.toLowerCase() === target);
+    if (exact) return exact;
+    const base = target.split("-")[0];
+    const baseMatch = voices.find((v) => v.lang.toLowerCase().startsWith(`${base}-`) || v.lang.toLowerCase() === base);
+    return baseMatch ?? null;
+  };
+
+  const speakChunk = (synth: SpeechSynthesis, text: string, localeValue: string | undefined) =>
+    new Promise<void>((resolve, reject) => {
+      const utterance = new SpeechSynthesisUtterance(text);
+      const voice = pickVoice(localeValue);
+      if (voice) {
+        utterance.voice = voice;
+        utterance.lang = voice.lang;
+      } else if (localeValue) {
+        utterance.lang = localeValue;
+      }
+      utterance.onend = () => resolve();
+      utterance.onerror = () => reject(new Error("Speech synthesis failed"));
+      synth.speak(utterance);
+    });
+
+  const onToggleSpeak = async () => {
     if (!supported || !speakableText) return;
     const synth = window.speechSynthesis;
 
     if (speaking) {
+      cancelRequestedRef.current = true;
       synth.cancel();
       setSpeaking(false);
       return;
     }
 
-    const utterance = new SpeechSynthesisUtterance(speakableText);
-    if (locale) utterance.lang = locale;
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
     setSpeaking(true);
+    cancelRequestedRef.current = false;
     synth.cancel();
-    synth.speak(utterance);
+    synth.resume();
+
+    try {
+      const chunks = splitIntoChunks(speakableText);
+      for (const chunk of chunks) {
+        if (cancelRequestedRef.current) break;
+        // eslint-disable-next-line no-await-in-loop
+        await speakChunk(synth, chunk, locale);
+      }
+    } catch {
+      // no-op: fallback is handled by stopping speaking state
+    } finally {
+      setSpeaking(false);
+    }
   };
 
   return (

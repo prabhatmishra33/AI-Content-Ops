@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.entities import ProcessingJob
 from app.models.enums import PriorityQueue, ReviewDecisionValue, ReviewGate
 from app.orchestrator.tasks import after_review_decision_task
 from app.schemas.common import ApiResponse
@@ -111,8 +112,12 @@ def submit_decision(
             if decision.gate == ReviewGate.GATE_1:
                 workflow.handle_gate_1_result(db, task.job_id)
                 if decision.decision == ReviewDecisionValue.APPROVE:
-                    workflow.create_gate_2_review(db, task.job_id)
-                    next_actions.append("gate_2_created")
+                    job = db.query(ProcessingJob).filter(ProcessingJob.job_id == task.job_id).first()
+                    if job and job.state.value == "MEDIA_MIX_READY":
+                        workflow.create_gate_2_review(db, task.job_id)
+                        next_actions.append("gate_2_created")
+                    else:
+                        next_actions.append("gate_2_not_created_media_mix_not_ready")
                 else:
                     next_actions.append("job_rejected_gate_1")
             elif decision.gate == ReviewGate.GATE_2:

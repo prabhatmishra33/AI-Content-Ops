@@ -2,7 +2,7 @@
   "info": {
     "name": "AI Content Ops Backend (Latest)",
     "_postman_id": "532fa8df-0f7b-47f8-8860-4cfd6ab00f2d",
-    "description": "Latest collection aligned with Auth/RBAC, idempotency, thumbnail upload response, workflow gates, hardened distribution, and DLQ ops.",
+    "description": "Latest collection aligned with Auth/RBAC, idempotency, thumbnail upload response, workflow gates, media mix stage (MEDIA_MIX_READY), audio generation, and DLQ ops.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -34,9 +34,16 @@
             }
           ],
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
@@ -46,7 +53,10 @@
         },
         {
           "name": "Me",
-          "request": { "method": "GET", "url": "{{base_url}}/api/v1/auth/me" }
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/auth/me"
+          }
         }
       ]
     },
@@ -55,15 +65,33 @@
       "item": [
         {
           "name": "Live",
-          "request": { "auth": { "type": "noauth" }, "method": "GET", "url": "{{base_url}}/api/v1/health/live" }
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/health/live"
+          }
         },
         {
           "name": "Ready",
-          "request": { "auth": { "type": "noauth" }, "method": "GET", "url": "{{base_url}}/api/v1/health/ready" }
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/health/ready"
+          }
         },
         {
           "name": "Metrics",
-          "request": { "auth": { "type": "noauth" }, "method": "GET", "url": "{{base_url}}/api/v1/health/metrics" }
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/health/metrics"
+          }
         }
       ]
     },
@@ -74,13 +102,30 @@
           "name": "Upload File (Multipart)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "x-idempotency-key", "value": "{{idempotency_key}}" }],
+            "header": [
+              {
+                "key": "x-idempotency-key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
             "body": {
               "mode": "formdata",
               "formdata": [
-                { "key": "uploader_ref", "value": "{{uploader_ref}}", "type": "text" },
-                { "key": "idempotency_key", "value": "{{idempotency_key}}", "type": "text" },
-                { "key": "file", "type": "file", "src": "{{video_file_path}}" }
+                {
+                  "key": "uploader_ref",
+                  "value": "{{uploader_ref}}",
+                  "type": "text"
+                },
+                {
+                  "key": "idempotency_key",
+                  "value": "{{idempotency_key}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "{{video_file_path}}"
+                }
               ]
             },
             "url": "{{base_url}}/api/v1/videos/upload/file"
@@ -91,8 +136,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "x-idempotency-key", "value": "{{idempotency_key}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-idempotency-key",
+                "value": "{{idempotency_key}}"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -103,19 +154,31 @@
         },
         {
           "name": "Get Video",
-          "request": { "method": "GET", "url": "{{base_url}}/api/v1/videos/{{video_id}}" }
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/videos/{{video_id}}"
+          }
         },
         {
           "name": "Get Video Status",
-          "request": { "method": "GET", "url": "{{base_url}}/api/v1/videos/{{video_id}}/status" }
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/videos/{{video_id}}/status"
+          }
         },
         {
           "name": "Get Video Thumbnail",
-          "request": { "method": "GET", "url": "{{base_url}}/api/v1/videos/{{video_id}}/thumbnail" }
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/videos/{{video_id}}/thumbnail"
+          }
         },
         {
           "name": "Stream Video",
-          "request": { "method": "GET", "url": "{{base_url}}/api/v1/videos/{{video_id}}/stream" }
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/videos/{{video_id}}/stream"
+          }
         }
       ]
     },
@@ -124,31 +187,88 @@
       "item": [
         {
           "name": "Run Phase A (Sync)",
-          "request": { "method": "POST", "header": [{ "key": "x-idempotency-key", "value": "{{idempotency_key}}" }], "url": "{{base_url}}/api/v1/workflow/{{job_id}}/phase-a" }
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-idempotency-key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/workflow/{{job_id}}/phase-a"
+          }
         },
         {
           "name": "Run Phase A (Async)",
-          "request": { "method": "POST", "header": [{ "key": "x-idempotency-key", "value": "{{idempotency_key}}" }], "url": "{{base_url}}/api/v1/workflow/{{job_id}}/phase-a/async" }
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-idempotency-key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/workflow/{{job_id}}/phase-a/async"
+          }
         },
         {
           "name": "Escalate HOLD to Gate 1",
-          "request": { "method": "POST", "header": [{ "key": "x-idempotency-key", "value": "{{idempotency_key}}" }], "url": "{{base_url}}/api/v1/workflow/{{job_id}}/hold/escalate" }
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-idempotency-key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/workflow/{{job_id}}/hold/escalate"
+          }
         },
         {
           "name": "Create Gate 1 (Sync)",
-          "request": { "method": "POST", "header": [{ "key": "x-idempotency-key", "value": "{{idempotency_key}}" }], "url": "{{base_url}}/api/v1/workflow/{{job_id}}/gate-1/create" }
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-idempotency-key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/workflow/{{job_id}}/gate-1/create"
+          }
         },
         {
           "name": "Create Gate 2 (Sync)",
-          "request": { "method": "POST", "header": [{ "key": "x-idempotency-key", "value": "{{idempotency_key}}" }], "url": "{{base_url}}/api/v1/workflow/{{job_id}}/gate-2/create" }
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-idempotency-key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/workflow/{{job_id}}/gate-2/create"
+          }
         },
         {
           "name": "Finalize (Async)",
-          "request": { "method": "POST", "header": [{ "key": "x-idempotency-key", "value": "{{idempotency_key}}" }], "url": "{{base_url}}/api/v1/workflow/{{job_id}}/finalize/async" }
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-idempotency-key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/workflow/{{job_id}}/finalize/async"
+          }
         },
         {
           "name": "Get Async Task Status",
-          "request": { "method": "GET", "url": "{{base_url}}/api/v1/workflow/tasks/{{async_task_id}}/status" }
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/workflow/tasks/{{async_task_id}}/status"
+          }
         }
       ]
     },
@@ -157,23 +277,38 @@
       "item": [
         {
           "name": "List Tasks (Any Pending)",
-          "request": { "method": "GET", "url": "{{base_url}}/api/v1/reviews/tasks?status=PENDING" }
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/reviews/tasks?status=PENDING"
+          }
         },
         {
           "name": "List Tasks (Gate 1 Pending)",
-          "request": { "method": "GET", "url": "{{base_url}}/api/v1/reviews/tasks?gate=GATE_1&status=PENDING" }
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/reviews/tasks?gate=GATE_1&status=PENDING"
+          }
         },
         {
           "name": "List Tasks (Gate 2 Pending)",
-          "request": { "method": "GET", "url": "{{base_url}}/api/v1/reviews/tasks?gate=GATE_2&status=PENDING" }
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/reviews/tasks?gate=GATE_2&status=PENDING"
+          }
         },
         {
           "name": "Submit Decision (Async progression)",
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "x-idempotency-key", "value": "{{idempotency_key}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-idempotency-key",
+                "value": "{{idempotency_key}}"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -184,47 +319,128 @@
         },
         {
           "name": "Claim Task",
-          "request": { "method": "POST", "header": [{ "key": "x-idempotency-key", "value": "{{idempotency_key}}" }], "url": "{{base_url}}/api/v1/reviews/tasks/{{task_id}}/claim?reviewer_ref={{reviewer_ref}}" }
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-idempotency-key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/reviews/tasks/{{task_id}}/claim?reviewer_ref={{reviewer_ref}}"
+          }
         },
         {
           "name": "Release Task",
-          "request": { "method": "POST", "header": [{ "key": "x-idempotency-key", "value": "{{idempotency_key}}" }], "url": "{{base_url}}/api/v1/reviews/tasks/{{task_id}}/release" }
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-idempotency-key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/reviews/tasks/{{task_id}}/release"
+          }
         },
         {
           "name": "Escalate Task",
-          "request": { "method": "POST", "header": [{ "key": "x-idempotency-key", "value": "{{idempotency_key}}" }], "url": "{{base_url}}/api/v1/reviews/tasks/{{task_id}}/escalate?to_priority=P0&escalated_by=lead_1&reason=urgent" }
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-idempotency-key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/reviews/tasks/{{task_id}}/escalate?to_priority=P0&escalated_by=lead_1&reason=urgent"
+          }
         },
         {
           "name": "Reopen Task",
-          "request": { "method": "POST", "header": [{ "key": "x-idempotency-key", "value": "{{idempotency_key}}" }], "url": "{{base_url}}/api/v1/reviews/tasks/{{task_id}}/reopen?reviewer_ref={{reviewer_ref}}&notes=recheck" }
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-idempotency-key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/reviews/tasks/{{task_id}}/reopen?reviewer_ref={{reviewer_ref}}&notes=recheck"
+          }
         },
         {
           "name": "SLA Breaches",
-          "request": { "method": "GET", "url": "{{base_url}}/api/v1/reviews/sla/breaches" }
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/reviews/sla/breaches"
+          }
         }
       ]
     },
     {
       "name": "AI / Reports / Wallet / Audit",
       "item": [
-        { "name": "Get AI Result", "request": { "method": "GET", "url": "{{base_url}}/api/v1/ai-results/video/{{video_id}}" } },
-        { "name": "Get Report", "request": { "method": "GET", "url": "{{base_url}}/api/v1/reports/video/{{video_id}}" } },
-        { "name": "Get Wallet", "request": { "method": "GET", "url": "{{base_url}}/api/v1/wallet/{{uploader_ref}}" } },
-        { "name": "Job Audit", "request": { "method": "GET", "url": "{{base_url}}/api/v1/audit/job/{{job_id}}" } },
-        { "name": "Review Task Audit", "request": { "method": "GET", "url": "{{base_url}}/api/v1/audit/review_task/{{task_id}}" } }
+        {
+          "name": "Get AI Result (Moderator/Admin)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/ai-results/video/{{video_id}}"
+          }
+        },
+        {
+          "name": "Get Report",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/reports/video/{{video_id}}"
+          }
+        },
+        {
+          "name": "Get Wallet",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/wallet/{{uploader_ref}}"
+          }
+        },
+        {
+          "name": "Job Audit",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/audit/job/{{job_id}}"
+          }
+        },
+        {
+          "name": "Review Task Audit",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/audit/review_task/{{task_id}}"
+          }
+        }
       ]
     },
     {
       "name": "Policies",
       "item": [
-        { "name": "Get Active Policy", "request": { "method": "GET", "url": "{{base_url}}/api/v1/policies/active" } },
+        {
+          "name": "Get Active Policy",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/policies/active"
+          }
+        },
         {
           "name": "Activate Policy",
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "x-idempotency-key", "value": "{{idempotency_key}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-idempotency-key",
+                "value": "{{idempotency_key}}"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -238,27 +454,70 @@
     {
       "name": "Distribution",
       "item": [
-        { "name": "Distribution Status by Video", "request": { "method": "GET", "url": "{{base_url}}/api/v1/distribution/video/{{video_id}}" } },
-        { "name": "YouTube OAuth URL", "request": { "method": "GET", "url": "{{base_url}}/api/v1/distribution/youtube/oauth/url?account_ref={{youtube_account_ref}}" } },
-        { "name": "YouTube Integration Status", "request": { "method": "GET", "url": "{{base_url}}/api/v1/distribution/youtube/integration/status?account_ref={{youtube_account_ref}}" } },
+        {
+          "name": "Distribution Status by Video",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/distribution/video/{{video_id}}"
+          }
+        },
+        {
+          "name": "YouTube OAuth URL",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/distribution/youtube/oauth/url?account_ref={{youtube_account_ref}}"
+          }
+        },
+        {
+          "name": "YouTube Integration Status",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/distribution/youtube/integration/status?account_ref={{youtube_account_ref}}"
+          }
+        },
         {
           "name": "YouTube Publish",
           "request": {
             "method": "POST",
-            "header": [{ "key": "x-idempotency-key", "value": "{{idempotency_key}}" }],
+            "header": [
+              {
+                "key": "x-idempotency-key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
             "url": "{{base_url}}/api/v1/distribution/youtube/publish/{{video_id}}?account_ref={{youtube_account_ref}}"
           }
         },
-        { "name": "YouTube Status Poll", "request": { "method": "GET", "url": "{{base_url}}/api/v1/distribution/youtube/status/{{external_id}}?account_ref={{youtube_account_ref}}" } },
-        { "name": "YouTube Quota", "request": { "method": "GET", "url": "{{base_url}}/api/v1/distribution/youtube/quota" } },
+        {
+          "name": "YouTube Status Poll",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/distribution/youtube/status/{{external_id}}?account_ref={{youtube_account_ref}}"
+          }
+        },
+        {
+          "name": "YouTube Quota",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/distribution/youtube/quota"
+          }
+        },
         {
           "name": "YouTube Webhook (Manual Test)",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "x-webhook-secret", "value": "{{youtube_webhook_secret}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-webhook-secret",
+                "value": "{{youtube_webhook_secret}}"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -272,34 +531,161 @@
     {
       "name": "Ops (DLQ)",
       "item": [
-        { "name": "List DLQ", "request": { "method": "GET", "url": "{{base_url}}/api/v1/ops/dlq" } },
+        {
+          "name": "List DLQ",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/ops/dlq"
+          }
+        },
         {
           "name": "Replay DLQ Event",
           "request": {
             "method": "POST",
-            "header": [{ "key": "x-idempotency-key", "value": "{{idempotency_key}}" }],
+            "header": [
+              {
+                "key": "x-idempotency-key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
             "url": "{{base_url}}/api/v1/ops/dlq/{{dlq_event_id}}/replay"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Media & Audio (Moderator/Admin)",
+      "item": [
+        {
+          "name": "Audio Options",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/audio-news/options"
+          }
+        },
+        {
+          "name": "Generate Audio News",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"raw_details\": \"Breaking update: traffic signal failure at central junction. Emergency response on site.\",\n  \"language\": \"English\",\n  \"style\": \"professional broadcast reporter\",\n  \"voice\": \"Kore\",\n  \"locale\": \"en-IN\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/audio-news/generate"
+          }
+        },
+        {
+          "name": "List Audio News Files",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/audio-news/list"
+          }
+        },
+        {
+          "name": "Download Audio News File",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/audio-news/download?filename={{audio_filename}}"
+          }
+        },
+        {
+          "name": "Media Status",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/media/{{video_id}}/status"
+          }
+        },
+        {
+          "name": "Retry Media Mix",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/media/{{video_id}}/mix"
+          }
+        },
+        {
+          "name": "Stream Mixed Preview",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/media/{{video_id}}/preview/stream"
           }
         }
       ]
     }
   ],
   "variable": [
-    { "key": "base_url", "value": "http://127.0.0.1:8000" },
-    { "key": "access_token", "value": "" },
-    { "key": "username", "value": "admin" },
-    { "key": "password", "value": "admin123" },
-    { "key": "uploader_ref", "value": "demo_user_1" },
-    { "key": "reviewer_ref", "value": "moderator_1" },
-    { "key": "video_file_path", "value": "C:/path/to/video.mp4" },
-    { "key": "video_id", "value": "vid_replace_me" },
-    { "key": "job_id", "value": "job_replace_me" },
-    { "key": "task_id", "value": "task_replace_me" },
-    { "key": "async_task_id", "value": "celery_task_id_replace_me" },
-    { "key": "dlq_event_id", "value": "1" },
-    { "key": "youtube_account_ref", "value": "default" },
-    { "key": "external_id", "value": "youtube_video_id_replace_me" },
-    { "key": "youtube_webhook_secret", "value": "" },
-    { "key": "idempotency_key", "value": "idem-demo-001" }
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "username",
+      "value": "admin"
+    },
+    {
+      "key": "password",
+      "value": "admin123"
+    },
+    {
+      "key": "uploader_ref",
+      "value": "demo_user_1"
+    },
+    {
+      "key": "reviewer_ref",
+      "value": "moderator_1"
+    },
+    {
+      "key": "video_file_path",
+      "value": "C:/path/to/video.mp4"
+    },
+    {
+      "key": "video_id",
+      "value": "vid_replace_me"
+    },
+    {
+      "key": "job_id",
+      "value": "job_replace_me"
+    },
+    {
+      "key": "task_id",
+      "value": "task_replace_me"
+    },
+    {
+      "key": "async_task_id",
+      "value": "celery_task_id_replace_me"
+    },
+    {
+      "key": "dlq_event_id",
+      "value": "1"
+    },
+    {
+      "key": "youtube_account_ref",
+      "value": "default"
+    },
+    {
+      "key": "external_id",
+      "value": "youtube_video_id_replace_me"
+    },
+    {
+      "key": "youtube_webhook_secret",
+      "value": ""
+    },
+    {
+      "key": "idempotency_key",
+      "value": "idem-demo-001"
+    },
+    {
+      "key": "audio_filename",
+      "value": "vid_replace_me.mp3"
+    }
   ]
 }

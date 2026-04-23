@@ -9,6 +9,7 @@ class JobState(str, Enum):
     APPROVED_GATE_1 = "APPROVED_GATE_1"
     REJECTED_GATE_1 = "REJECTED_GATE_1"
     AI_PHASE_B_DONE = "AI_PHASE_B_DONE"
+    MEDIA_MIX_READY = "MEDIA_MIX_READY"
     IN_REVIEW_GATE_2 = "IN_REVIEW_GATE_2"
     APPROVED_GATE_2 = "APPROVED_GATE_2"
     REJECTED_GATE_2 = "REJECTED_GATE_2"
@@ -35,4 +36,3 @@ class ReviewGate(str, Enum):
 class ReviewDecisionValue(str, Enum):
     APPROVE = "APPROVE"
     REJECT = "REJECT"
-

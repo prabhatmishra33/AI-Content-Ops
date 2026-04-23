@@ -1,18 +1,10 @@
-"""
-Audio News Reporter Service
-----------------------------
-1. generate_script()  – Gemini text model turns raw notes into a broadcast script
-2. synthesize_speech() – Gemini TTS model converts the script to audio (PCM)
-3. generate_news_audio() – orchestrator that chains both steps and persists as MP3
-"""
-
 from __future__ import annotations
 
 import datetime
-import os
-import uuid
-import io
 import logging
+import subprocess
+import uuid
+import wave
 from pathlib import Path
 from typing import Optional
 
@@ -22,79 +14,63 @@ from google.genai import types
 from app.core.config import settings
 from app.services.prompt_registry import get_prompt
 
-logger = logging.getLogger(__name__)
 
-# ── Supported voices & locales (kept dynamic — any value the API accepts works) ──
+logger = logging.getLogger("app.audio_news")
 
 AVAILABLE_VOICES = [
-    "Aoede", "Charon", "Fenrir", "Kore", "Leda",
-    "Orus", "Puck", "Zephyr",
+    "Aoede",
+    "Charon",
+    "Fenrir",
+    "Kore",
+    "Leda",
+    "Orus",
+    "Puck",
+    "Zephyr",
 ]
 
 AVAILABLE_LOCALES = [
-    "en-US", "en-IN", "en-GB", "en-AU",
-    "hi-IN", "bn-IN", "ta-IN", "te-IN", "mr-IN", "gu-IN", "kn-IN", "ml-IN",
-    "es-ES", "es-MX", "fr-FR", "de-DE", "it-IT", "pt-BR",
-    "ja-JP", "ko-KR", "zh-CN", "zh-TW",
-    "ar-SA", "ru-RU", "tr-TR", "nl-NL", "pl-PL", "sv-SE",
-    "th-TH", "vi-VN", "id-ID", "ms-MY",
+    "en-US",
+    "en-IN",
+    "en-GB",
+    "en-AU",
+    "hi-IN",
+    "bn-IN",
+    "ta-IN",
+    "te-IN",
+    "mr-IN",
+    "gu-IN",
+    "kn-IN",
+    "ml-IN",
+    "es-ES",
+    "es-MX",
+    "fr-FR",
+    "de-DE",
+    "it-IT",
+    "pt-BR",
+    "ja-JP",
+    "ko-KR",
+    "zh-CN",
+    "zh-TW",
+    "ar-SA",
+    "ru-RU",
+    "tr-TR",
+    "nl-NL",
+    "pl-PL",
+    "sv-SE",
+    "th-TH",
+    "vi-VN",
+    "id-ID",
+    "ms-MY",
 ]
 
-STORAGE_DIR = Path(__file__).resolve().parents[2] / "storage" / "audio_news"
+# Shared storage root used by the backend services.
+SHARED_STORAGE_ROOT = Path(__file__).resolve().parents[3] / "storage"
+AUDIO_NEWS_DIR = SHARED_STORAGE_ROOT / "audio_news"
 
 
 class AudioNewsService:
-    """End-to-end audio news generation."""
-
-    def __init__(self):
-        self._ensure_storage()
-
-    # ── helpers ──────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _ensure_storage():
-        STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-
-    @staticmethod
-    def _get_client() -> genai.Client:
-        """Return a Gen AI client configured for Vertex AI or API-key mode."""
-        if settings.google_genai_use_vertexai:
-            project = settings.google_cloud_project or os.getenv("GOOGLE_CLOUD_PROJECT")
-            location = settings.google_cloud_location or os.getenv("GOOGLE_CLOUD_REGION", "global")
-            return genai.Client(vertexai=True, project=project, location=location)
-        api_key = settings.google_api_key or settings.gemini_api_key or settings.model_api_key
-        if not api_key:
-            raise ValueError("No Google API key configured for Gen AI client")
-        return genai.Client(api_key=api_key)
-
-    @staticmethod
-    def _pcm_to_mp3(pcm: bytes, channels: int = 1, rate: int = 24000, sample_width: int = 2) -> bytes:
-        """Convert raw PCM bytes to MP3 using ffmpeg (subprocess).
-
-        Pipes raw PCM into ffmpeg's stdin and reads MP3 from stdout.
-        No temp files, no Python audio libraries needed.
-        """
-        import subprocess
-
-        bits = sample_width * 8  # 16
-        cmd = [
-            "ffmpeg", "-y",
-            "-f", f"s{bits}le",       # signed 16-bit little-endian PCM
-            "-ar", str(rate),         # sample rate
-            "-ac", str(channels),     # mono
-            "-i", "pipe:0",           # read from stdin
-            "-b:a", "192k",           # bitrate
-            "-f", "mp3",              # output format
-            "pipe:1",                 # write to stdout
-        ]
-        proc = subprocess.run(
-            cmd,
-            input=pcm,
-            capture_output=True,
-        )
-        if proc.returncode != 0:
-            raise RuntimeError(f"ffmpeg failed (exit {proc.returncode}): {proc.stderr.decode(errors='replace')[:500]}")
-        return proc.stdout
+    def __init__(self) -> None:
+        AUDIO_NEWS_DIR.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
     def list_voices() -> list[str]:
@@ -104,7 +80,28 @@ class AudioNewsService:
     def list_locales() -> list[str]:
         return list(AVAILABLE_LOCALES)
 
-    # ── Step 1: Script generation ────────────────────────────────────────
+    @staticmethod
+    def _get_client() -> genai.Client:
+        if settings.google_genai_use_vertexai:
+            return genai.Client(
+                vertexai=True,
+                project=settings.google_cloud_project,
+                location=settings.google_cloud_location or "global",
+            )
+
+        api_key = settings.google_api_key or settings.gemini_api_key or settings.model_api_key
+        if not api_key:
+            raise ValueError("Missing Google API key for audio generation")
+        return genai.Client(api_key=api_key)
+
+    @staticmethod
+    def _safe_close_client(client: object) -> None:
+        close_fn = getattr(client, "close", None)
+        if callable(close_fn):
+            try:
+                close_fn()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("audio_news_client_close_failed", extra={"error": str(exc)})
 
     def generate_script(
         self,
@@ -113,46 +110,21 @@ class AudioNewsService:
         style: str = "professional broadcast reporter",
         script_model: Optional[str] = None,
     ) -> str:
-        """
-        Turn raw notes / bullet points into a polished news reporter script.
-
-        Parameters
-        ----------
-        raw_details : str
-            The user's raw information — can be bullet points, notes, or unstructured text.
-        language : str
-            The language the script should be written in (e.g. "English", "Hindi", "Spanish").
-        style : str
-            Tone/style of the script.
-        script_model : str | None
-            Override the Gemini model used for script generation.
-        """
         model = script_model or settings.tts_script_gen_model
+        prompt = get_prompt("audio_news_script")
         client = self._get_client()
-
-        prompt_entry = get_prompt("audio_news_script")
-        system = prompt_entry["system"]
-        user_msg = prompt_entry["user_template"].format(
-            raw_details=raw_details,
-            language=language,
-            style=style,
-        )
-
-        logger.info("Generating news script with model=%s language=%s", model, language)
-
-        response = client.models.generate_content(
-            model=model,
-            contents=user_msg,
-            config=types.GenerateContentConfig(
-                system_instruction=system,
-                temperature=0.7,
-            ),
-        )
-        script = response.text.strip()
-        logger.info("Script generated — %d characters", len(script))
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt["user_template"].format(raw_details=raw_details, language=language, style=style),
+                config=types.GenerateContentConfig(system_instruction=prompt["system"], temperature=0.7),
+            )
+        finally:
+            self._safe_close_client(client)
+        script = (response.text or "").strip()
+        if not script:
+            raise RuntimeError("Script generation returned empty content")
         return script
-
-    # ── Step 2: TTS synthesis ────────────────────────────────────────────
 
     def synthesize_speech(
         self,
@@ -161,65 +133,80 @@ class AudioNewsService:
         locale: Optional[str] = None,
         tts_model: Optional[str] = None,
     ) -> bytes:
-        """
-        Convert text to speech using Gemini TTS (streaming).
-
-        Returns raw PCM audio bytes (16-bit, 24 kHz, mono).
-
-        Parameters
-        ----------
-        text : str
-            The text (script) to synthesize.
-        voice : str | None
-            TTS voice name. Defaults to settings.tts_default_voice.
-        locale : str | None
-            Language/locale code. Defaults to settings.tts_default_locale.
-        tts_model : str | None
-            Override the TTS model.
-        """
         model = tts_model or settings.tts_model
-        voice = voice or settings.tts_default_voice
-        locale = locale or settings.tts_default_locale
-        client = self._get_client()
+        chosen_voice = voice or settings.tts_default_voice
+        chosen_locale = locale or settings.tts_default_locale
 
         config = types.GenerateContentConfig(
             speech_config=types.SpeechConfig(
-                language_code=locale,
+                language_code=chosen_locale,
                 voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name=voice,
-                    )
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=chosen_voice),
                 ),
             ),
-            temperature=2.0,
+            temperature=0.9,
         )
 
-        logger.info("Synthesizing speech: model=%s voice=%s locale=%s", model, voice, locale)
-
         pcm_data = bytearray()
-        chunk_count = 0
+        client = self._get_client()
+        try:
+            stream = client.models.generate_content_stream(
+                model=model,
+                contents=text,
+                config=config,
+            )
+            for chunk in stream:
+                if not chunk.candidates:
+                    continue
+                first = chunk.candidates[0]
+                if not first.content or not first.content.parts:
+                    continue
+                part = first.content.parts[0]
+                if part.inline_data and part.inline_data.data:
+                    pcm_data += part.inline_data.data
+        finally:
+            self._safe_close_client(client)
 
-        for chunk in client.models.generate_content_stream(
-            model=model,
-            contents=text,
-            config=config,
-        ):
-            chunk_count += 1
-            if (
-                chunk.candidates is None
-                or not chunk.candidates
-                or chunk.candidates[0].content is None
-                or not chunk.candidates[0].content.parts
-            ):
-                continue
-            part = chunk.candidates[0].content.parts[0]
-            if part.inline_data and part.inline_data.data:
-                pcm_data += part.inline_data.data
-
-        logger.info("TTS complete — %d chunks, %d bytes PCM", chunk_count, len(pcm_data))
+        if not pcm_data:
+            raise RuntimeError("TTS synthesis returned empty audio")
         return bytes(pcm_data)
 
-    # ── Step 3: Orchestrator ─────────────────────────────────────────────
+    @staticmethod
+    def _pcm_to_mp3(pcm: bytes, channels: int = 1, sample_rate: int = 24000, sample_width: int = 2) -> bytes:
+        bits = sample_width * 8
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            f"s{bits}le",
+            "-ar",
+            str(sample_rate),
+            "-ac",
+            str(channels),
+            "-i",
+            "pipe:0",
+            "-b:a",
+            "192k",
+            "-f",
+            "mp3",
+            "pipe:1",
+        ]
+        proc = subprocess.run(cmd, input=pcm, capture_output=True)
+        if proc.returncode != 0:
+            raise RuntimeError(f"ffmpeg mp3 conversion failed: {(proc.stderr or b'').decode(errors='replace')[:500]}")
+        return proc.stdout
+
+    @staticmethod
+    def _pcm_to_wav_bytes(pcm: bytes, channels: int = 1, sample_rate: int = 24000, sample_width: int = 2) -> bytes:
+        from io import BytesIO
+
+        out = BytesIO()
+        with wave.open(out, "wb") as wf:
+            wf.setnchannels(channels)
+            wf.setsampwidth(sample_width)
+            wf.setframerate(sample_rate)
+            wf.writeframes(pcm)
+        return out.getvalue()
 
     def generate_news_audio(
         self,
@@ -230,59 +217,45 @@ class AudioNewsService:
         locale: Optional[str] = None,
         script_model: Optional[str] = None,
         tts_model: Optional[str] = None,
+        output_format: str = "mp3",
+        forced_filename: Optional[str] = None,
     ) -> dict:
-        """
-        Full pipeline: raw details → script → audio → saved MP3 file.
+        script = self.generate_script(raw_details=raw_details, language=language, style=style, script_model=script_model)
+        pcm = self.synthesize_speech(text=script, voice=voice, locale=locale, tts_model=tts_model)
 
-        Returns a dict with:
-            id:         unique identifier for this generation
-            script:     the generated script text
-            filename:   the MP3 filename on disk
-            filepath:   absolute path to the MP3 file
-            duration_s: approximate duration in seconds
-            voice:      voice used
-            locale:     locale used
-            created_at: ISO timestamp
-        """
-        # 1. Generate the script
-        script = self.generate_script(
-            raw_details=raw_details,
-            language=language,
-            style=style,
-            script_model=script_model,
-        )
+        output_format = output_format.lower().strip()
+        if output_format not in {"mp3", "wav"}:
+            raise ValueError("output_format must be 'mp3' or 'wav'")
 
-        # 2. Synthesize speech
-        pcm = self.synthesize_speech(
-            text=script,
-            voice=voice,
-            locale=locale,
-            tts_model=tts_model,
-        )
+        if output_format == "mp3":
+            data = self._pcm_to_mp3(pcm)
+        else:
+            data = self._pcm_to_wav_bytes(pcm)
 
-        # 3. Convert PCM → MP3
-        mp3_bytes = self._pcm_to_mp3(pcm)
+        created_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        if forced_filename:
+            filename = forced_filename
+        else:
+            audio_id = uuid.uuid4().hex[:12]
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"news_{ts}_{audio_id}.{output_format}"
 
-        # 4. Save to disk
-        audio_id = uuid.uuid4().hex[:12]
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"news_{timestamp}_{audio_id}.mp3"
-        filepath = STORAGE_DIR / filename
-        filepath.write_bytes(mp3_bytes)
+        path = AUDIO_NEWS_DIR / filename
+        path.write_bytes(data)
 
-        # Approximate duration (16-bit mono 24kHz → 2 bytes per sample)
         duration_s = round(len(pcm) / (24000 * 2), 2)
-
-        logger.info("Audio saved: %s (%.1fs)", filepath, duration_s)
-
+        logger.info(
+            "audio_news_generated",
+            extra={"audio_path": str(path), "duration_s": duration_s, "output_format": output_format},
+        )
         return {
-            "id": audio_id,
-            "script": script,
             "filename": filename,
-            "filepath": str(filepath),
+            "filepath": str(path),
             "duration_s": duration_s,
             "voice": voice or settings.tts_default_voice,
             "locale": locale or settings.tts_default_locale,
             "language": language,
-            "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "script": script,
+            "format": output_format,
+            "created_at": created_at,
         }

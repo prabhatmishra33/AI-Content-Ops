@@ -14,6 +14,11 @@
   - `moderator`
   - `admin`
 
+### Role Notes (latest)
+- `GET /api/v1/ai-results/video/{video_id}` -> `moderator|admin` only
+- All `/api/v1/media/*` endpoints -> `moderator|admin` only
+- All `/api/v1/audio-news/*` endpoints -> `moderator|admin` only
+
 ## 3. Global Headers
 - `Authorization: Bearer <token>` for protected APIs
 - `x-idempotency-key: <unique-key>` for mutating APIs (recommended)
@@ -64,10 +69,21 @@
 - `GET /api/v1/reviews/sla/breaches`
 
 ### 4.6 AI / Reports / Wallet / Audit
-- `GET /api/v1/ai-results/video/{video_id}`
+- `GET /api/v1/ai-results/video/{video_id}` (moderator/admin)
 - `GET /api/v1/reports/video/{video_id}`
 - `GET /api/v1/wallet/{uploader_ref}`
 - `GET /api/v1/audit/{entity_type}/{entity_id}`
+
+### 4.6.1 Media (Moderator/Admin)
+- `GET /api/v1/media/{video_id}/status`
+- `POST /api/v1/media/{video_id}/mix`
+- `GET /api/v1/media/{video_id}/preview/stream`
+
+### 4.6.2 Audio News (Moderator/Admin)
+- `GET /api/v1/audio-news/options`
+- `POST /api/v1/audio-news/generate`
+- `GET /api/v1/audio-news/list`
+- `GET /api/v1/audio-news/download?filename=...`
 
 ### 4.7 Policies
 - `GET /api/v1/policies/active`
@@ -92,8 +108,12 @@
 2. Upload: `POST /api/v1/videos/upload/file`
 3. Check status: `GET /api/v1/videos/{video_id}/status`
 4. If HOLD, escalate: `POST /api/v1/workflow/{job_id}/hold/escalate`
-5. Approve Gate 1 and Gate 2 via review decision APIs
-6. Read outputs:
+5. Approve Gate 1 via review decision API
+6. Validate media stage:
+   - `GET /api/v1/media/{video_id}/status` (expect `MEDIA_MIX_READY` before Gate 2)
+   - Optional retry: `POST /api/v1/media/{video_id}/mix`
+7. Approve Gate 2 via review decision API
+8. Read outputs:
    - AI result
    - report
    - distribution status
