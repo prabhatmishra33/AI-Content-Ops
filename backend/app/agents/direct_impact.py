@@ -6,7 +6,7 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 
-# from app.core.config import settings
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +103,7 @@ Set 'confidence' (0.0 to 1.0) to reflect how strongly the video evidence support
 
 class DirectImpactScoringAgent:
     def __init__(self):
-        # self.api_key = settings.google_api_key or settings.gemini_api_key or settings.model_api_key
-        self.api_key = "AIzaSyA9ChUPsO7w8EVn70q7WjIsUMRWyGUOVKE"
+        self.api_key = settings.google_api_key or settings.gemini_api_key or settings.model_api_key
         if not self.api_key:
             raise ValueError("Google GenAI requires GOOGLE_API_KEY (or gemini/model api key) to be set.")
         self.client = genai.Client(api_key=self.api_key)
