@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     model_retry_backoff_multiplier: float = 2.0
     model_retry_backoff_max_seconds: float = 20.0
 
+    # TTS / Audio News config
+    tts_model: str = "gemini-3.1-flash-tts-preview"
+    tts_default_voice: str = "Kore"
+    tts_default_locale: str = "en-IN"
+    tts_script_gen_model: str = "gemini-2.0-flash"
+
     # Gemini-specific config (Google Generative Language API)
     google_api_key: str | None = None
     gemini_api_key: str | None = None
