@@ -20,7 +20,7 @@ COPY backend/scripts ./scripts
 COPY backend/requirements.txt .
 
 # Create storage and data dirs
-RUN mkdir -p storage/uploads storage/audio_news storage/media_mixed data
+RUN mkdir -p storage/uploads storage/audio_news storage/media_mixed data && ln -s /app/storage /storage
 
 # Non-root user
 RUN useradd -r -m appuser && chown -R appuser:appuser /app
