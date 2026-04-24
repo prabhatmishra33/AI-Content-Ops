@@ -25,7 +25,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - db-data:/app/backend.db
+      - db-data:/app/data
       - uploads:/app/storage/uploads
       - audio-news:/app/storage/audio_news
       - media-mixed:/app/storage/media_mixed
@@ -54,7 +54,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - db-data:/app/backend.db
+      - db-data:/app/data
       - uploads:/app/storage/uploads
       - audio-news:/app/storage/audio_news
       - media-mixed:/app/storage/media_mixed
@@ -76,7 +76,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - db-data:/app/backend.db
+      - db-data:/app/data
     networks:
       - ai-content-net
 
@@ -95,7 +95,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - db-data:/app/backend.db
+      - db-data:/app/data
       - uploads:/app/storage/uploads
     networks:
       - ai-content-net
@@ -115,7 +115,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - db-data:/app/backend.db
+      - db-data:/app/data
     networks:
       - ai-content-net
 
@@ -134,7 +134,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - db-data:/app/backend.db
+      - db-data:/app/data
     networks:
       - ai-content-net
 
