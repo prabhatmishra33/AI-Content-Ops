@@ -1,0 +1,183 @@
+services:
+
+  # ── Infrastructure ──
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - ai-content-net
+
+  # ── Backend API ──
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    restart: unless-stopped
+    env_file: .env.production
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - db-data:/app/backend.db
+      - uploads:/app/storage/uploads
+      - audio-news:/app/storage/audio_news
+      - media-mixed:/app/storage/media_mixed
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/live')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - ai-content-net
+
+  # ── Celery Workers (dedicated per queue group) ──
+  worker-ai:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    restart: unless-stopped
+    env_file: .env.production
+    command: >
+      celery -A app.orchestrator.tasks worker
+      --pool=prefork --concurrency=2
+      -Q q.ai_processing
+      --loglevel=info -n worker.ai@%h
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - db-data:/app/backend.db
+      - uploads:/app/storage/uploads
+      - audio-news:/app/storage/audio_news
+      - media-mixed:/app/storage/media_mixed
+    networks:
+      - ai-content-net
+
+  worker-review:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    restart: unless-stopped
+    env_file: .env.production
+    command: >
+      celery -A app.orchestrator.tasks worker
+      --pool=prefork --concurrency=2
+      -Q q.review,q.review_p0,q.review_p1,q.review_p2,q.hold
+      --loglevel=info -n worker.review@%h
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - db-data:/app/backend.db
+    networks:
+      - ai-content-net
+
+  worker-distribution:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    restart: unless-stopped
+    env_file: .env.production
+    command: >
+      celery -A app.orchestrator.tasks worker
+      --pool=prefork --concurrency=2
+      -Q q.distribution,q.distribution_youtube,q.distribution_secondary
+      --loglevel=info -n worker.distribution@%h
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - db-data:/app/backend.db
+      - uploads:/app/storage/uploads
+    networks:
+      - ai-content-net
+
+  worker-report:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    restart: unless-stopped
+    env_file: .env.production
+    command: >
+      celery -A app.orchestrator.tasks worker
+      --pool=prefork --concurrency=2
+      -Q q.report
+      --loglevel=info -n worker.report@%h
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - db-data:/app/backend.db
+    networks:
+      - ai-content-net
+
+  worker-reward:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    restart: unless-stopped
+    env_file: .env.production
+    command: >
+      celery -A app.orchestrator.tasks worker
+      --pool=prefork --concurrency=2
+      -Q q.reward
+      --loglevel=info -n worker.reward@%h
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - db-data:/app/backend.db
+    networks:
+      - ai-content-net
+
+  # ── Frontend ──
+  ui:
+    build:
+      context: ..
+      dockerfile: deploy/ui.Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://35.196.100.221/api/v1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - ai-content-net
+
+  # ── Reverse Proxy ──
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      ui:
+        condition: service_healthy
+    networks:
+      - ai-content-net
+
+volumes:
+  redis-data:
+  db-data:
+  uploads:
+  audio-news:
+  media-mixed:
+
+networks:
+  ai-content-net:
+    driver: bridge
