@@ -12,7 +12,7 @@ COPY ui/ .
 # Bake in the API URL at build time (Next.js requirement for NEXT_PUBLIC_ vars)
 ARG NEXT_PUBLIC_API_BASE_URL=http://35.196.100.221/api/v1
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
-RUN npm run build
+RUN mkdir -p public && npm run build
 
 # ──── Stage 3: Runtime ────
 FROM node:22-alpine
