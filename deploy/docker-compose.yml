@@ -16,6 +16,7 @@ services:
 
   # ── Backend API ──
   api:
+    container_name: api
     build:
       context: ..
       dockerfile: deploy/backend.Dockerfile
@@ -140,6 +141,7 @@ services:
 
   # ── Frontend ──
   ui:
+    container_name: ui
     build:
       context: ..
       dockerfile: deploy/ui.Dockerfile
@@ -157,6 +159,7 @@ services:
 
   # ── Reverse Proxy ──
   nginx:
+    container_name: nginx
     image: nginx:1.27-alpine
     restart: unless-stopped
     ports:
