@@ -18,9 +18,10 @@ from app.services.workflow_service import WorkflowService
 
 router = APIRouter(prefix="/videos", tags=["videos"])
 workflow = WorkflowService()
-SERVICE_ROOT = Path(__file__).resolve().parents[3]
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-REPO_ROOT = Path(__file__).resolve().parents[5]
+_p = Path(__file__).resolve()
+SERVICE_ROOT = _p.parents[3] if len(_p.parents) > 3 else _p.parents[-1]
+PROJECT_ROOT = _p.parents[4] if len(_p.parents) > 4 else _p.parents[-1]
+REPO_ROOT = _p.parents[5] if len(_p.parents) > 5 else _p.parents[-1]
 UPLOAD_DIR = PROJECT_ROOT / "storage" / "uploads"
 UPLOAD_COMPLETE_IDEMPOTENCY_ENDPOINT = "videos.upload.complete.v2"
 UPLOAD_FILE_IDEMPOTENCY_ENDPOINT = "videos.upload.file.v2"
