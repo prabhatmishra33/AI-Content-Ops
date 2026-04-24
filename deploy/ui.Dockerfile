@@ -27,7 +27,7 @@ COPY --from=build /app/package.json ./package.json
 # Copy public dir if it exists (static assets)
 COPY --from=build /app/public ./public
 
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup && chown -R appuser:appuser /app
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup && chown -R appuser:appgroup /app
 USER appuser
 
 EXPOSE 3000
