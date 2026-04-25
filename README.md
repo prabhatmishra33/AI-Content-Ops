@@ -176,13 +176,13 @@ MODEL_PROVIDER=gemini
 # LangChain doc convention:
 GOOGLE_API_KEY=your_google_ai_studio_key
 MODEL_API_BASE=https://generativelanguage.googleapis.com/v1beta
-MODEL_NAME_IMPACT=gemini-2.0-flash-preview
-MODEL_NAME_MODERATION=gemini-2.0-flash-preview
-MODEL_NAME_CLASSIFICATION=gemini-2.0-flash-preview
-MODEL_NAME_COMPLIANCE=gemini-2.0-flash-preview
-MODEL_NAME_CONTENT=gemini-2.0-flash-preview
-MODEL_NAME_LOCALIZATION=gemini-2.0-flash-preview
-MODEL_NAME_REPORTER=gemini-2.0-flash-preview
+MODEL_NAME_IMPACT=gemini-2.5-flash-preview
+MODEL_NAME_MODERATION=gemini-2.5-flash-preview
+MODEL_NAME_CLASSIFICATION=gemini-2.5-flash-preview
+MODEL_NAME_COMPLIANCE=gemini-2.5-flash-preview
+MODEL_NAME_CONTENT=gemini-2.5-flash-preview
+MODEL_NAME_LOCALIZATION=gemini-2.5-flash-preview
+MODEL_NAME_REPORTER=gemini-2.5-flash-preview
 ```
 
 Note: model IDs can vary by account/region. If you get model-not-found, update to the exact Gemini Flash Preview model name enabled for your key.
