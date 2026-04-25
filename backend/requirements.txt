@@ -16,3 +16,7 @@ PyJWT==2.10.1
 cryptography==45.0.4
 prometheus-client==0.21.1
 google-genai>=1.0.0
+# Pattern DB (Postgres + pgvector)
+psycopg2-binary==2.9.10
+pgvector==0.3.6
+numpy==2.2.5

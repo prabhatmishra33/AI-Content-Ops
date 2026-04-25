@@ -228,6 +228,20 @@ class WorkflowService:
         db.commit()
         db.refresh(job)
 
+        # Dispatch Agentic RAG pipeline async — does not block or affect job.state
+        if job.state == JobState.AI_PHASE_A_DONE:
+            try:
+                from app.orchestrator.tasks import process_correlation_task
+                process_correlation_task.apply_async(
+                    kwargs={"job_id": job.job_id},
+                    queue=settings.queue_ai_processing,
+                )
+            except Exception as _exc:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "Could not enqueue correlation task for %s: %s", job.job_id, _exc
+                )
+
         audit_service.write_audit(
             db,
             "job",
@@ -307,7 +321,18 @@ class WorkflowService:
         video = db.scalar(select(VideoAsset).where(VideoAsset.video_id == job.video_id))
         try:
             impact_analysis = ai.tags.get("impact_analysis", {})
-            content = self.creator.run(video.filename, ai.tags.get("tags", []), impact_analysis)
+            # Enrich content generation with pattern context if available
+            rag_context: dict | None = None
+            try:
+                from app.db.pattern_session import get_pattern_session_factory
+                _factory = get_pattern_session_factory()
+                if _factory:
+                    from app.services.agentic_rag.fingerprint_store import FingerprintStore
+                    with _factory() as _pdb:
+                        rag_context = FingerprintStore.get_rag_result(_pdb, job.video_id)
+            except Exception:
+                pass  # RAG enrichment is optional; never block Phase B
+            content = self.creator.run(video.filename, ai.tags.get("tags", []), impact_analysis, rag_context=rag_context)
             localized = self.localizer.run(content)
         except Exception as exc:
             job.priority = PriorityQueue.HOLD

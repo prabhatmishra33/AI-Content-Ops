@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import ai_results, audio_news, audit, auth, distribution, health, media, ops, policies, reports, rewards, reviews, videos, workflow
+from app.api.routes import ai_results, audio_news, audit, auth, distribution, health, media, ops, patterns, policies, reports, rewards, reviews, videos, workflow
 from app.core.config import settings
 from app.core.observability import configure_logging, observability_middleware
 from app.db.base import Base
 from app.db.session import engine
+from app.db.pattern_session import init_pattern_db
 
 
 def create_app() -> FastAPI:
@@ -21,6 +22,7 @@ def create_app() -> FastAPI:
     )
 
     Base.metadata.create_all(bind=engine)
+    init_pattern_db()  # no-op if PATTERN_DATABASE_URL is unset
 
     app.include_router(health.router, prefix="/api/v1")
     app.include_router(auth.router, prefix="/api/v1")
@@ -36,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(audit.router, prefix="/api/v1")
     app.include_router(audio_news.router, prefix="/api/v1")
     app.include_router(media.router, prefix="/api/v1")
+    app.include_router(patterns.router, prefix="/api/v1")
 
     return app
 

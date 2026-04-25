@@ -10,6 +10,7 @@ import type { ReviewTask } from "@/lib/types";
 import { Spinner } from "@/components/spinner";
 import { LocalizedAudioButton } from "@/components/localized-audio-button";
 import { extractSpeakableEntries } from "@/lib/content-audio";
+import { ContextPanel } from "@/components/context-panel";
 
 type Decision = "APPROVE" | "REJECT";
 type MediaStatus = {
@@ -235,6 +236,7 @@ export default function ReviewTaskDetailPage() {
             </Link>
           ) : null}
         </div>
+        {task?.video_id && <ContextPanel videoId={task.video_id} />}
         <div className="card min-w-0 space-y-3">
           <h2 className="section-title">Submit Decision</h2>
           <div>

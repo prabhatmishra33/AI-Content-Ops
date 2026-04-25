@@ -220,6 +220,46 @@ def finalize_job_task(job_id: str):
     return distribute_content_task(job_id)
 
 
+@celery_app.task(name="app.orchestrator.tasks.process_correlation_task", ignore_result=True)
+def process_correlation_task(job_id: str):
+    """
+    Agentic RAG pipeline — runs fully async after Phase A.
+    Does NOT touch job.state; failures are logged but never surface to the main pipeline.
+    """
+    db = SessionLocal()
+    try:
+        from sqlalchemy import select as _select
+        job = db.scalar(_select(ProcessingJob).where(ProcessingJob.job_id == job_id))
+        if not job:
+            return
+        video = db.scalar(_select(VideoAsset).where(VideoAsset.video_id == job.video_id))
+        if not video:
+            return
+        ai = db.scalar(_select(AIResult).where(AIResult.video_id == job.video_id))
+
+        ai_context = {}
+        if ai:
+            tags = ai.tags or {}
+            ai_context = {
+                "primary_category": tags.get("primary_category"),
+                "tags": tags.get("tags", []),
+                "impact_score": ai.impact_score,
+                "summary": (tags.get("impact_analysis") or {}).get("summary"),
+            }
+
+        from app.services.agentic_rag.pipeline import run_correlation_pipeline
+        run_correlation_pipeline(
+            video_id=job.video_id,
+            video_path=video.storage_uri or "",
+            ai_context=ai_context,
+        )
+    except Exception as exc:
+        from app.services import dlq_service as _dlq
+        _dlq.add_dlq_event(db, "process_correlation_task", {"job_id": job_id}, str(exc))
+    finally:
+        db.close()
+
+
 @celery_app.task(name="app.orchestrator.tasks.after_review_decision_task")
 def after_review_decision_task(job_id: str, gate: str, decision: str):
     db = SessionLocal()

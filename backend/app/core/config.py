@@ -98,7 +98,48 @@ class Settings(BaseSettings):
     malware_scan_api_key: str | None = None
     malware_scan_timeout_seconds: float = 15.0
 
-    # Auth / RBAC
+    # ------------------------------------------------------------------ #
+    # Agentic RAG — Pattern Detection                                    #
+    # ------------------------------------------------------------------ #
+    pattern_database_url: str | None = None  # postgresql://user:pass@host:5433/news_patterns
+
+    # Gemini embedding model
+    gemini_embedding_model: str = "gemini-embedding-exp-03-07"
+    pgvector_dimensions: int = 768
+
+    # LLM models for RAG pipeline
+    router_model: str = "gemini-2.0-flash"
+    synthesiser_model: str = "gemini-2.5-flash"
+    router_max_tokens: int = 512
+    synthesiser_max_tokens: int = 600
+    router_temperature: float = 0.1
+    synthesiser_temperature: float = 0.2
+
+    # Temporal decay
+    temporal_decay_lambda: float = 0.05
+
+    # Search defaults
+    default_days_back: int = 90
+    person_search_days_back: int = 180
+    default_location_radius_meters: int = 500
+    semantic_similarity_threshold: float = 0.72
+    max_candidates_after_merge: int = 50
+    top_k_to_synthesiser: int = 10
+
+    # Thread assignment confidence thresholds
+    thread_join_confidence_threshold: float = 0.80
+    thread_link_confidence_threshold: float = 0.50
+
+    # Scoring weights
+    score_weight_semantic: float = 0.45
+    score_weight_entity: float = 0.30
+    score_weight_temporal: float = 0.15
+    score_proximity_bonus: float = 0.10
+    score_person_bonus: float = 0.10
+
+    # ------------------------------------------------------------------ #
+    # Auth / RBAC                                                        #
+    # ------------------------------------------------------------------ #
     auth_jwt_secret: str = "change-me"
     auth_jwt_algorithm: str = "HS256"
     auth_access_token_exp_minutes: int = 120

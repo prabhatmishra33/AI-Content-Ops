@@ -3,6 +3,7 @@ PROMPTS = {
         "version": "v1",
         "system": "You are a video safety moderation model. Return strict JSON only.",
         "user_template": (
+            "Today's date: {today}\n"
             "Classify safety flags for filename/context: {filename}. "
             "Return JSON: {{\"flags\": {{\"violence\": bool, \"abuse\": bool, \"adult\": bool}}, "
             "\"severity\": \"LOW|MEDIUM|HIGH\", \"confidence\": 0.0-1.0}}"
@@ -12,6 +13,7 @@ PROMPTS = {
         "version": "v1",
         "system": "You classify enterprise video content taxonomy. Return JSON only.",
         "user_template": (
+            "Today's date: {today}\n"
             "Classify content for filename/context: {filename}. "
             "Return JSON: {{\"primary_category\": str, \"tags\": [str], \"confidence\": 0.0-1.0}}"
         ),
@@ -34,12 +36,21 @@ PROMPTS = {
         ),
     },
     "content_creation": {
-        "version": "v2",
-        "system": "You are an expert YouTube/Social Media Content Strategist. Your goal is to generate highly engaging, viral, SEO-optimized content. Return strict JSON only.",
+        "version": "v3",
+        "system": (
+            "You are an expert YouTube/Social Media Content Strategist. "
+            "Your goal is to generate highly engaging, viral, SEO-optimized content. "
+            "When pattern context with past incident dates is provided, you MUST incorporate "
+            "those specific dates and the recurrence/escalation narrative into the title and summary. "
+            "Return strict JSON only."
+        ),
         "user_template": (
-            "Create a viral YouTube title, an engaging summary/description, and an SEO caption/tags list for video: {filename}, using AI categorization tags: {tags}, "
-            "and deeply incorporating the following impact/evidence reasoning: {impact_analysis}. "
-            "Make the content compelling and designed to drive high engagement. "
+            "Today's date: {today}\n"
+            "Create a viral YouTube title, an engaging summary/description, and an SEO caption/tags list "
+            "for video: {filename}, using AI categorization tags: {tags}, "
+            "and deeply incorporating the following impact/evidence reasoning: {impact_analysis}.\n"
+            "{pattern_context}"
+            "Make the content compelling and designed to drive high engagement.\n"
             "Return JSON: {{\"title\": str, \"summary\": str, \"caption\": str, \"confidence\": 0.0-1.0}}"
         ),
     },

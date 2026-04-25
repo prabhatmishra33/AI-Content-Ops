@@ -8,3 +8,36 @@ services:
     environment:
       - DATABASE_URL=sqlite:///./backend.db
       - APP_ENV=dev
+    depends_on:
+      pattern_db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  pattern_db:
+    image: pgvector/pgvector:pg16
+    container_name: ai-content-pattern-db
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: pattern_user
+      POSTGRES_PASSWORD: pattern_pass
+      POSTGRES_DB: news_patterns
+    volumes:
+      - pattern_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pattern_user -d news_patterns"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-content-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+volumes:
+  pattern_db_data:

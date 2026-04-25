@@ -4,6 +4,7 @@ from typing import Any, Dict
 from app.core.config import settings
 from app.services.model_gateway import ModelGateway
 from app.services.prompt_registry import get_prompt
+from app.services.agentic_rag.date_utils import today_str
 
 
 class ClassificationAgent:
@@ -12,7 +13,7 @@ class ClassificationAgent:
 
     def run(self, filename: str) -> Dict[str, Any]:
         prompt = get_prompt("classification")
-        user = prompt["user_template"].format(filename=filename)
+        user = prompt["user_template"].format(today=today_str(), filename=filename)
         data, meta = asyncio.run(
             self.gateway.generate_json(
                 model=settings.model_name_classification,
