@@ -54,7 +54,9 @@ class ClassificationAgent:
             '  "confidence": float 0.0-1.0\n'
         )
 
-        tools = [GOOGLE_SEARCH_TOOL, ENTITY_LOOKUP_TOOL] if _settings.agent_search_enabled else [ENTITY_LOOKUP_TOOL]
+        # google_search and function declarations cannot be combined in one request.
+        # Use Google Search when enabled (richer, current), Wikipedia function otherwise.
+        tools = [GOOGLE_SEARCH_TOOL] if _settings.agent_search_enabled else [ENTITY_LOOKUP_TOOL]
         config = types.GenerateContentConfig(
             tools=tools,
             temperature=0.2,
