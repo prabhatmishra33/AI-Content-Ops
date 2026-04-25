@@ -13,6 +13,7 @@ from app.agents.impact import ImpactScoringAgent
 from app.agents.direct_impact import DirectImpactScoringAgent
 from app.agents.moderation import ModerationAgent
 from app.agents.reporter import ReporterAgent
+from app.agents.veracity import VeracityAgent
 from app.services.gemini_file_cache import GeminiFileCache
 from app.models.entities import AIResult, AuditEvent, ProcessingJob, ReportArtifact, ReviewDecision, ReviewTask, VideoAsset
 from app.models.enums import JobState, PriorityQueue, ReviewDecisionValue, ReviewGate
@@ -29,6 +30,7 @@ class WorkflowService:
         self.impact = ImpactScoringAgent()
         self.direct_impact = DirectImpactScoringAgent()
         self.compliance = ComplianceGovernanceAgent()
+        self.veracity = VeracityAgent()
         self.creator = ContentCreationAgent()
         self.localizer = LocalizationAgent()
         self.reporter = ReporterAgent()
@@ -173,6 +175,7 @@ class WorkflowService:
 
         has_video = bool(video.storage_uri) and Path(video.storage_uri).exists()
         file_cache = None
+        mod = cls = imp = cmp = vrc = {}
 
         try:
             if has_video:
@@ -181,11 +184,13 @@ class WorkflowService:
                 cls = self.classifier.run(storage_uri=video.storage_uri, gemini_file_cache=file_cache, filename=video.filename)
                 imp = self.direct_impact.run(video_path=video.storage_uri, gemini_file_cache=file_cache)
                 cmp = self.compliance.run(moderation=mod, classification=cls, storage_uri=video.storage_uri, gemini_file_cache=file_cache)
+                vrc = self.veracity.run(moderation=mod, classification=cls, storage_uri=video.storage_uri, gemini_file_cache=file_cache)
             else:
                 mod = self.moderation.run(filename=video.filename)
                 cls = self.classifier.run(filename=video.filename)
                 imp = self.impact.run(mod, cls)
                 cmp = self.compliance.run(moderation=mod, classification=cls)
+                vrc = self.veracity.run(moderation=mod, classification=cls)
         except Exception as exc:
             job.priority = PriorityQueue.HOLD
             job.state = JobState.HOLD
@@ -220,9 +225,14 @@ class WorkflowService:
         tags_dict["impact_analysis"] = self._strip_meta(imp)
         ai.tags = tags_dict
 
-        ai.impact_score = float(self._strip_meta(imp).get("impact_score", 0.0))
+        imp_clean = self._strip_meta(imp)
+        ai.impact_score = float(imp_clean.get("impact_score", 0.0))
         ai.compliance = self._strip_meta(cmp)
-        job.priority = routing_service.route_priority(db, ai.impact_score)
+        ai.veracity = self._strip_meta(vrc)
+        ai.market_sensitivity = imp_clean.get("market_sensitivity", {})
+        ai.news_context = imp_clean.get("news_context", {})
+
+        job.priority = routing_service.route_priority(db, ai.impact_score, ai.news_context)
 
         # Confidence-based escalation rule:
         # if impact confidence is low, force at least P2 human review.
