@@ -72,7 +72,7 @@ class ModelGateway:
             # For Gemini, we now use the native google-genai SDK via our central utility
             # to support forced Vertex AI backend for text processing.
             from app.core.genai_client import get_genai_client
-            client = get_genai_client(force_vertexai=True)
+            client = get_genai_client(force_vertexai=False)
             return client
 
         if provider == "ollama":

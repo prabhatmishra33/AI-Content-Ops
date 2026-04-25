@@ -83,7 +83,7 @@ class AudioNewsService:
 
     @staticmethod
     def _get_client() -> genai.Client:
-        return get_genai_client(force_vertexai=True)
+        return get_genai_client(force_vertexai=False)
 
     @staticmethod
     def _safe_close_client(client: object) -> None:
