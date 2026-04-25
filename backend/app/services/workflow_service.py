@@ -13,6 +13,7 @@ from app.agents.impact import ImpactScoringAgent
 from app.agents.direct_impact import DirectImpactScoringAgent
 from app.agents.moderation import ModerationAgent
 from app.agents.reporter import ReporterAgent
+from app.services.gemini_file_cache import GeminiFileCache
 from app.models.entities import AIResult, AuditEvent, ProcessingJob, ReportArtifact, ReviewDecision, ReviewTask, VideoAsset
 from app.models.enums import JobState, PriorityQueue, ReviewDecisionValue, ReviewGate
 from app.services import audit_service, distribution_service, policy_service, review_service, reward_service, routing_service
@@ -170,11 +171,21 @@ class WorkflowService:
         if not video:
             return None
 
+        has_video = bool(video.storage_uri) and Path(video.storage_uri).exists()
+        file_cache = None
+
         try:
-            mod = self.moderation.run(video.filename)
-            cls = self.classifier.run(video.filename)
-            imp = self.direct_impact.run(video.storage_uri)
-            cmp = self.compliance.run(mod, cls)
+            if has_video:
+                file_cache = GeminiFileCache()
+                mod = self.moderation.run(storage_uri=video.storage_uri, gemini_file_cache=file_cache, filename=video.filename)
+                cls = self.classifier.run(storage_uri=video.storage_uri, gemini_file_cache=file_cache, filename=video.filename)
+                imp = self.direct_impact.run(video_path=video.storage_uri, gemini_file_cache=file_cache)
+                cmp = self.compliance.run(moderation=mod, classification=cls, storage_uri=video.storage_uri, gemini_file_cache=file_cache)
+            else:
+                mod = self.moderation.run(filename=video.filename)
+                cls = self.classifier.run(filename=video.filename)
+                imp = self.impact.run(mod, cls)
+                cmp = self.compliance.run(moderation=mod, classification=cls)
         except Exception as exc:
             job.priority = PriorityQueue.HOLD
             job.state = JobState.HOLD
@@ -190,6 +201,9 @@ class WorkflowService:
                 {"stage": "phase_a", "error": str(exc)},
             )
             return job
+        finally:
+            if file_cache:
+                file_cache.cleanup()
 
         mod_meta = self._extract_meta(mod)
         cls_meta = self._extract_meta(cls)
