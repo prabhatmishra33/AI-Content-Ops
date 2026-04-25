@@ -65,7 +65,7 @@ class VeracityAgent:
         gemini_file_cache,
     ) -> Dict[str, Any]:
         from google.genai import types
-        from app.agents.base_multimodal import GOOGLE_SEARCH_TOOL, extract_grounding_metadata
+        from app.agents.base_multimodal import GOOGLE_SEARCH_TOOL, _extract_json, extract_grounding_metadata
 
         client = get_genai_client(force_vertexai=False)
         model = getattr(settings, "model_name_veracity", "gemini-2.5-flash")
@@ -75,18 +75,18 @@ class VeracityAgent:
         cls_summary = json.dumps({k: v for k, v in classification.items() if k != "__meta"})
         context = f"Content classification: {cls_summary}\n\n"
 
+        # google_search cannot be combined with response_mime_type/response_schema.
+        # Parse JSON from text output instead.
         response = client.models.generate_content(
             model=model,
             contents=[gemini_file, context + VERACITY_PROMPT],
             config=types.GenerateContentConfig(
                 tools=[GOOGLE_SEARCH_TOOL],
-                response_mime_type="application/json",
-                response_schema=VERACITY_SCHEMA,
                 temperature=0.1,
             ),
         )
 
-        data = json.loads(response.text)
+        data = _extract_json(response.text)
         data["__meta"] = {
             "model": model,
             "prompt_version": "v1_search",
@@ -116,18 +116,18 @@ class VeracityAgent:
             + VERACITY_PROMPT
         )
 
+        # google_search cannot be combined with response_mime_type/response_schema.
         response = client.models.generate_content(
             model=model,
             contents=[user_prompt],
             config=types.GenerateContentConfig(
                 tools=[GOOGLE_SEARCH_TOOL],
-                response_mime_type="application/json",
-                response_schema=VERACITY_SCHEMA,
                 temperature=0.1,
             ),
         )
 
-        data = json.loads(response.text)
+        from app.agents.base_multimodal import _extract_json
+        data = _extract_json(response.text)
         data["__meta"] = {
             "model": model,
             "prompt_version": "v1_search_text",
