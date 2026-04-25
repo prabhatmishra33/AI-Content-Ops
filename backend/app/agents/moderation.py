@@ -51,8 +51,10 @@ class ModerationAgent:
 
         gemini_file = gemini_file_cache.get_or_upload(storage_uri)
 
+        from app.agents.base_multimodal import today_context
         prompt = (
-            "You are a video safety moderator. Watch this video carefully. "
+            today_context()
+            + "You are a video safety moderator. Watch this video carefully. "
             "Analyze the visual and audio content for safety violations. "
             "Identify whether the video contains violence, abuse, or adult/explicit content. "
             "Base your judgment strictly on what is shown and heard in the video.\n\n"

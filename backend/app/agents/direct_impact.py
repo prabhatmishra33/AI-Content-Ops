@@ -235,10 +235,12 @@ class DirectImpactScoringAgent:
                 logger.info(f"Search cache HIT for entities: {entity_names}")
             else:
                 try:
+                    from app.agents.base_multimodal import today_context
                     search_response = self.client.models.generate_content(
                         model=model,
                         contents=[
-                            f"Search for the latest news and context about: {entity_names}. "
+                            today_context()
+                            + f"Search for the latest news and context about: {entity_names}. "
                             "Are any involved in breaking news, market events, financial disclosures, or controversy? "
                             "Is this topic currently trending? "
                             "Summarize the most relevant current context in 4-6 sentences."

@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -11,6 +12,11 @@ logger = logging.getLogger(__name__)
 MAX_TOOL_TURNS = 5
 
 GOOGLE_SEARCH_TOOL = types.Tool(google_search=types.GoogleSearch())
+
+
+def today_context() -> str:
+    """Returns a one-line date string to inject into prompts so models know the current date."""
+    return f"TODAY'S DATE: {datetime.now(timezone.utc).strftime('%B %d, %Y')} (UTC). Use this as the reference for all temporal judgments.\n\n"
 
 ENTITY_LOOKUP_TOOL = types.Tool(
     function_declarations=[

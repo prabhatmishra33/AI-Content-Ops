@@ -72,8 +72,9 @@ class VeracityAgent:
 
         gemini_file = gemini_file_cache.get_or_upload(storage_uri)
 
+        from app.agents.base_multimodal import today_context
         cls_summary = json.dumps({k: v for k, v in classification.items() if k != "__meta"})
-        context = f"Content classification: {cls_summary}\n\n"
+        context = today_context() + f"Content classification: {cls_summary}\n\n"
 
         # google_search cannot be combined with response_mime_type/response_schema.
         # Parse JSON from text output instead.
@@ -109,10 +110,12 @@ class VeracityAgent:
         category = classification.get("primary_category", "unknown")
         entities = classification.get("named_entities", [])
 
+        from app.agents.base_multimodal import today_context
         user_prompt = (
-            f"Content category: {category}\n"
-            f"Tags: {', '.join(tags[:10]) if tags else 'none'}\n"
-            f"Named entities: {', '.join(e.get('name', '') for e in entities[:5]) if entities else 'none'}\n\n"
+            today_context()
+            + f"Content category: {category}\n"
+            + f"Tags: {', '.join(tags[:10]) if tags else 'none'}\n"
+            + f"Named entities: {', '.join(e.get('name', '') for e in entities[:5]) if entities else 'none'}\n\n"
             + VERACITY_PROMPT
         )
 
