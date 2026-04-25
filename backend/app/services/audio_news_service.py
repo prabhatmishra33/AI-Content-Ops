@@ -94,20 +94,46 @@ class AudioNewsService:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("audio_news_client_close_failed", extra={"error": str(exc)})
 
+    @staticmethod
+    def _build_target_instructions(video_duration_s: Optional[float]) -> str:
+        """Return a prompt instruction block that targets the script length to match the video."""
+        if video_duration_s is None:
+            return ""
+        # Broadcast reading pace: ~150 words per minute
+        target_words = max(40, round(video_duration_s / 60 * 150))
+        if video_duration_s <= 90:
+            depth = "summarized (hit only the essential facts)"
+        elif video_duration_s <= 300:
+            depth = "standard detail (key facts plus brief context)"
+        else:
+            depth = "detailed (comprehensive coverage with context and analysis)"
+        return (
+            f"TARGET LENGTH: approximately {target_words} words "
+            f"to fill {round(video_duration_s)} seconds of audio at a natural broadcast pace.\n"
+            f"DEPTH: {depth}.\n\n"
+        )
+
     def generate_script(
         self,
         raw_details: str,
         language: str = "English",
         style: str = "professional broadcast reporter",
         script_model: Optional[str] = None,
+        target_duration_s: Optional[float] = None,
     ) -> str:
         model = script_model or settings.tts_script_gen_model
         prompt = get_prompt("audio_news_script")
+        target_instructions = self._build_target_instructions(target_duration_s)
         client = self._get_client()
         try:
             response = client.models.generate_content(
                 model=model,
-                contents=prompt["user_template"].format(raw_details=raw_details, language=language, style=style),
+                contents=prompt["user_template"].format(
+                    raw_details=raw_details,
+                    language=language,
+                    style=style,
+                    target_instructions=target_instructions,
+                ),
                 config=types.GenerateContentConfig(system_instruction=prompt["system"], temperature=0.7),
             )
         finally:
@@ -210,8 +236,15 @@ class AudioNewsService:
         tts_model: Optional[str] = None,
         output_format: str = "mp3",
         forced_filename: Optional[str] = None,
+        video_duration_s: Optional[float] = None,
     ) -> dict:
-        script = self.generate_script(raw_details=raw_details, language=language, style=style, script_model=script_model)
+        script = self.generate_script(
+            raw_details=raw_details,
+            language=language,
+            style=style,
+            script_model=script_model,
+            target_duration_s=video_duration_s,
+        )
         pcm = self.synthesize_speech(text=script, voice=voice, locale=locale, tts_model=tts_model)
 
         output_format = output_format.lower().strip()

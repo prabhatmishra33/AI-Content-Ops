@@ -114,13 +114,14 @@ PROMPTS = {
             "- Include a strong opening hook, the core facts, context, and a closing line.\n"
             "- Do NOT add stage directions, sound cues, or markdown formatting.\n"
             "- Do NOT invent facts — only use what is provided in the raw details.\n"
-            "- Keep the script between 150-400 words unless the raw details warrant more.\n"
+            "- Match the word count to the target length supplied by the user; if none is given default to 150-400 words.\n"
             "- Adapt tone to the style requested (formal, casual, breaking news, etc.).\n"
             "- Return ONLY the script text, nothing else."
         ),
         "user_template": (
             "Write the news script in {language}.\n"
             "Style/tone: {style}.\n\n"
+            "{target_instructions}"
             "--- RAW DETAILS ---\n"
             "{raw_details}\n"
             "--- END RAW DETAILS ---\n\n"
