@@ -146,7 +146,7 @@ services:
       context: ..
       dockerfile: deploy/ui.Dockerfile
       args:
-        NEXT_PUBLIC_API_BASE_URL: http://35.196.100.221/api/v1
+        NEXT_PUBLIC_API_BASE_URL: http://35.196.233.10/api/v1
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
