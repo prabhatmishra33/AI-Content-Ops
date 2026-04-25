@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models.entities import ProcessingJob, VideoAsset
+from app.models.entities import AIResult, ProcessingJob, VideoAsset
 from app.schemas.common import ApiResponse
 from app.schemas.video import JobStatusResponse, UploadCompleteRequest
 from app.core.security import get_current_user, require_roles
@@ -251,6 +251,19 @@ def get_video_status(video_id: str, _user=Depends(require_roles("uploader", "mod
     job = db.scalar(select(ProcessingJob).where(ProcessingJob.video_id == video_id))
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    ai = db.scalar(select(AIResult).where(AIResult.video_id == video_id))
+    generated_content = (ai.generated_content or {}) if ai else {}
+    localized_content = (ai.localized_content or {}) if ai else {}
+    audio_meta = generated_content.get("audio_news", {}) if isinstance(generated_content, dict) else {}
+    mix_meta = localized_content.get("media_mix", {}) if isinstance(localized_content, dict) else {}
+    content_prep_done = bool(generated_content) and bool(localized_content)
+    media_mix_ready = str(mix_meta.get("state", "")).upper() == "READY" or job.state.value in {"AI_PHASE_B_DONE", "MEDIA_MIX_READY", "IN_REVIEW_GATE_2", "DISTRIBUTED", "REPORT_READY", "COMPLETED"}
+    if content_prep_done and media_mix_ready:
+        phase_b_overall = "COMPLETED"
+    elif content_prep_done:
+        phase_b_overall = "IN_PROGRESS"
+    else:
+        phase_b_overall = "NOT_STARTED"
     status = JobStatusResponse(
         job_id=job.job_id,
         video_id=job.video_id,
@@ -260,7 +273,15 @@ def get_video_status(video_id: str, _user=Depends(require_roles("uploader", "mod
         last_error=job.last_error,
         updated_at=job.updated_at,
     )
-    return ApiResponse(data=status.model_dump())
+    data = status.model_dump()
+    data["phase_b"] = {
+        "content_prep_status": "COMPLETED" if content_prep_done else "NOT_STARTED",
+        "media_mix_status": "COMPLETED" if media_mix_ready else ("IN_PROGRESS" if content_prep_done else "NOT_STARTED"),
+        "overall_status": phase_b_overall,
+        "audio_state": audio_meta.get("state", "PENDING") if isinstance(audio_meta, dict) else "PENDING",
+        "media_mix_state": mix_meta.get("state", "PENDING") if isinstance(mix_meta, dict) else "PENDING",
+    }
+    return ApiResponse(data=data)
 
 
 @router.get("/{video_id}/thumbnail")

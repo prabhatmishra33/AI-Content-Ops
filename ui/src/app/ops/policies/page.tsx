@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api";
 import { generateIdempotencyKey } from "@/lib/idempotency";
@@ -11,6 +11,8 @@ export default function PoliciesPage() {
   const [p0, setP0] = useState("0.95");
   const [p1, setP1] = useState("0.90");
   const [p2, setP2] = useState("0.80");
+  const [impactConfidenceMin, setImpactConfidenceMin] = useState("0.60");
+  const [newsEscalationEnabled, setNewsEscalationEnabled] = useState(true);
   const [holdAuto, setHoldAuto] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -20,6 +22,17 @@ export default function PoliciesPage() {
     queryKey: ["active-policy"],
     queryFn: () => apiRequest<Record<string, unknown>>("/policies/active")
   });
+
+  useEffect(() => {
+    const d = activeQ.data;
+    if (!d) return;
+    if (typeof d.threshold_p0 === "number") setP0(String(d.threshold_p0));
+    if (typeof d.threshold_p1 === "number") setP1(String(d.threshold_p1));
+    if (typeof d.threshold_p2 === "number") setP2(String(d.threshold_p2));
+    if (typeof d.impact_confidence_min === "number") setImpactConfidenceMin(String(d.impact_confidence_min));
+    if (typeof d.news_trending_escalation_enabled === "boolean") setNewsEscalationEnabled(d.news_trending_escalation_enabled);
+    if (typeof d.hold_auto_create_gate1 === "boolean") setHoldAuto(d.hold_auto_create_gate1);
+  }, [activeQ.data]);
 
   const activate = async () => {
     setErr(null);
@@ -34,6 +47,8 @@ export default function PoliciesPage() {
           threshold_p0: Number(p0),
           threshold_p1: Number(p1),
           threshold_p2: Number(p2),
+          impact_confidence_min: Number(impactConfidenceMin),
+          news_trending_escalation_enabled: newsEscalationEnabled,
           hold_auto_create_gate1: holdAuto
         }
       });
@@ -88,6 +103,23 @@ export default function PoliciesPage() {
               <input className="input mt-1" value={p2} onChange={(e) => setP2(e.target.value)} />
             </div>
           </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+            <p className="font-semibold text-slate-700">Base Threshold Rules</p>
+            <p className="mt-1">These are the default score cutoffs used for routing: P0, P1, P2, else HOLD.</p>
+          </div>
+          <div className="pt-1">
+            <h3 className="text-sm font-semibold text-slate-800">Exceptional Rules (Overrides)</h3>
+            <p className="mt-1 text-xs text-slate-500">These conditions can override base thresholds for safer review routing.</p>
+          </div>
+          <div>
+            <label className="label">Impact Confidence Minimum</label>
+            <input className="input mt-1" value={impactConfidenceMin} onChange={(e) => setImpactConfidenceMin(e.target.value)} />
+            <p className="mt-1 text-xs text-slate-500">If AI confidence is below this value, HOLD items are escalated for human review.</p>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input checked={newsEscalationEnabled} onChange={(e) => setNewsEscalationEnabled(e.target.checked)} type="checkbox" />
+            Escalate one priority level for trending/breaking news context
+          </label>
           <label className="flex items-center gap-2 text-sm">
             <input checked={holdAuto} onChange={(e) => setHoldAuto(e.target.checked)} type="checkbox" />
             Automatically send HOLD items to first review stage

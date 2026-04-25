@@ -142,6 +142,8 @@ class ThresholdPolicy(Base):
     threshold_p0: Mapped[float] = mapped_column(Float)
     threshold_p1: Mapped[float] = mapped_column(Float)
     threshold_p2: Mapped[float] = mapped_column(Float)
+    impact_confidence_min: Mapped[float] = mapped_column(Float, default=0.60)
+    news_trending_escalation_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     hold_auto_create_gate1: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

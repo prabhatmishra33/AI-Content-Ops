@@ -72,6 +72,7 @@ const STATE_LABEL: Record<string, string> = {
   COMPLETED: "Completed",
   IN_REVIEW_GATE_1: "Under Review",
   IN_REVIEW_GATE_2: "Under Review",
+  AI_CONTENT_PREP_DONE: "Under Review",
   AI_PHASE_B_DONE: "Under Review",
   MEDIA_MIX_READY: "Preview prepared",
   DISTRIBUTED: "Almost done!",
@@ -210,7 +211,7 @@ export default function VideoDetailPage() {
       uploaded: eventTypes.has("JOB_CREATED"),
       phase_a: eventTypes.has("PHASE_A_COMPLETED"),
       gate_1: eventTypes.has("GATE_1_DECISION_APPROVE") || eventTypes.has("GATE_1_DECISION_REJECT"),
-      phase_b: eventTypes.has("PHASE_B_COMPLETED"),
+      phase_b: eventTypes.has("AI_CONTENT_PREP_COMPLETED") || eventTypes.has("PHASE_B_COMPLETED"),
       media_mix: eventTypes.has("MEDIA_MIX_READY"),
       gate_2: eventTypes.has("GATE_2_DECISION_APPROVE") || eventTypes.has("GATE_2_DECISION_REJECT"),
       distribution: eventTypes.has("DISTRIBUTION_COMPLETED") || eventTypes.has("DISTRIBUTION_PARTIAL_OR_FAILED"),
@@ -222,8 +223,8 @@ export default function VideoDetailPage() {
 
     if (stageId === "phase_a" && isHold) return "current";
     if (stageId === "gate_1" && state === "IN_REVIEW_GATE_1") return "current";
-    if (stageId === "phase_b" && state === "AI_PHASE_B_DONE") return "current";
-    if (stageId === "media_mix" && state === "MEDIA_MIX_READY") return "current";
+    if (stageId === "phase_b" && state === "AI_CONTENT_PREP_DONE") return "current";
+    if (stageId === "media_mix" && (state === "AI_PHASE_B_DONE" || state === "MEDIA_MIX_READY")) return "current";
     if (stageId === "gate_2" && state === "IN_REVIEW_GATE_2") return "current";
     if (stageId === "distribution" && state === "DISTRIBUTED") return "current";
     if (stageId === "report" && state === "REPORT_READY") return "current";
@@ -285,15 +286,34 @@ export default function VideoDetailPage() {
   const reportCreatedAt = typeof reportQ.data?.created_at === "string" ? reportQ.data.created_at : "";
 
   const workflowState = statusQ.data?.state ?? "";
+  const hasMediaMixReadyEvent = eventTypes.has("MEDIA_MIX_READY");
   const mixState = String(mediaQ.data?.mix?.state ?? "PENDING");
   const audioState = String(mediaQ.data?.audio?.state ?? "PENDING");
+  const mediaMixReadyOrLaterStates = new Set([
+    "AI_PHASE_B_DONE",
+    "MEDIA_MIX_READY",
+    "IN_REVIEW_GATE_2",
+    "DISTRIBUTED",
+    "REPORT_READY",
+    "COMPLETED",
+    "REJECTED_GATE_2",
+    "FAILED",
+  ]);
+  const mediaMixPanelMode: "not_started" | "waiting" | "active" =
+    workflowState === "AI_CONTENT_PREP_DONE"
+      ? "waiting"
+      : mediaMixReadyOrLaterStates.has(workflowState)
+        ? "active"
+        : "not_started";
   const nextStepMessage =
     workflowState === "IN_REVIEW_GATE_1"
       ? "Awaiting first moderator decision."
       : workflowState === "IN_REVIEW_GATE_2"
         ? "Awaiting final moderator approval."
+        : workflowState === "AI_CONTENT_PREP_DONE"
+          ? "AI content prep is complete. Media mix is now being prepared."
         : workflowState === "AI_PHASE_B_DONE"
-          ? "AI content preparation is complete. Final review is next."
+          ? (hasMediaMixReadyEvent ? "AI content preparation is complete. Final review is next." : "AI Content Prep done; Media Mix pending.")
           : workflowState === "MEDIA_MIX_READY"
             ? "Media mix is ready. Final review is next."
           : workflowState === "DISTRIBUTED"
@@ -586,7 +606,39 @@ export default function VideoDetailPage() {
 
       <div className="card text-sm">
         <h2 className="mb-2 section-title">Media Mix Preview</h2>
-        {mediaQ.isLoading ? (
+        {mediaMixPanelMode === "not_started" ? (
+          <div className="space-y-3">
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Narration Audio</p>
+                <p className="mt-1 font-medium text-slate-800">Not started</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mixed Preview</p>
+                <p className="mt-1 font-medium text-slate-800">Not started</p>
+              </div>
+            </div>
+            <div className="flex h-24 w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-100 text-sm text-slate-500">
+              Preview not started
+            </div>
+          </div>
+        ) : mediaMixPanelMode === "waiting" ? (
+          <div className="space-y-3">
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Narration Audio</p>
+                <p className="mt-1 font-medium text-slate-800">Waiting to start</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mixed Preview</p>
+                <p className="mt-1 font-medium text-slate-800">Waiting to start</p>
+              </div>
+            </div>
+            <div className="flex h-24 w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-100 text-sm text-slate-500">
+              Waiting to start
+            </div>
+          </div>
+        ) : mediaQ.isLoading ? (
           <div className="flex h-24 items-center justify-center rounded bg-slate-100">
             <span className="inline-flex items-center gap-2 text-sm text-slate-500">
               <Spinner size="sm" />

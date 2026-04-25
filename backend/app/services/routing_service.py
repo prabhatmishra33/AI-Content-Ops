@@ -17,7 +17,12 @@ def route_priority(db, impact_score: float, news_context: dict = None) -> Priori
         priority = PriorityQueue.HOLD
 
     # Breaking/high-velocity news escalates priority one tier
-    if news_context and news_context.get("is_trending") and news_context.get("velocity") in ("HIGH", "BREAKING"):
+    if (
+        getattr(policy, "news_trending_escalation_enabled", True)
+        and news_context
+        and news_context.get("is_trending")
+        and news_context.get("velocity") in ("HIGH", "BREAKING")
+    ):
         idx = _PRIORITY_ORDER.index(priority)
         priority = _PRIORITY_ORDER[min(idx + 1, len(_PRIORITY_ORDER) - 1)]
 

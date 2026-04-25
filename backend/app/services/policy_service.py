@@ -16,6 +16,8 @@ def get_active_policy(db: Session) -> ThresholdPolicy:
         threshold_p0=settings.threshold_p0,
         threshold_p1=settings.threshold_p1,
         threshold_p2=settings.threshold_p2,
+        impact_confidence_min=settings.impact_confidence_min,
+        news_trending_escalation_enabled=True,
         hold_auto_create_gate1=settings.hold_auto_create_gate1,
         is_active=True,
     )
@@ -31,6 +33,8 @@ def activate_new_policy(
     threshold_p0: float,
     threshold_p1: float,
     threshold_p2: float,
+    impact_confidence_min: float,
+    news_trending_escalation_enabled: bool,
     hold_auto_create_gate1: bool,
 ) -> ThresholdPolicy:
     db.execute(update(ThresholdPolicy).values(is_active=False))
@@ -39,6 +43,8 @@ def activate_new_policy(
         threshold_p0=threshold_p0,
         threshold_p1=threshold_p1,
         threshold_p2=threshold_p2,
+        impact_confidence_min=impact_confidence_min,
+        news_trending_escalation_enabled=news_trending_escalation_enabled,
         hold_auto_create_gate1=hold_auto_create_gate1,
         is_active=True,
     )
@@ -46,4 +52,3 @@ def activate_new_policy(
     db.commit()
     db.refresh(new_policy)
     return new_policy
-

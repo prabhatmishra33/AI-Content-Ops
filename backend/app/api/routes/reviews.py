@@ -113,7 +113,7 @@ def submit_decision(
                 workflow.handle_gate_1_result(db, task.job_id)
                 if decision.decision == ReviewDecisionValue.APPROVE:
                     job = db.query(ProcessingJob).filter(ProcessingJob.job_id == task.job_id).first()
-                    if job and job.state.value == "MEDIA_MIX_READY":
+                    if job and job.state.value in {"AI_PHASE_B_DONE", "MEDIA_MIX_READY"}:
                         workflow.create_gate_2_review(db, task.job_id)
                         next_actions.append("gate_2_created")
                     else:

@@ -233,16 +233,17 @@ class WorkflowService:
         ai.news_context = imp_clean.get("news_context", {})
 
         job.priority = routing_service.route_priority(db, ai.impact_score, ai.news_context)
+        active_policy = policy_service.get_active_policy(db)
 
         # Confidence-based escalation rule:
         # if impact confidence is low, force at least P2 human review.
         impact_confidence = float(self._strip_meta(imp).get("confidence", 0.0))
-        if impact_confidence < settings.impact_confidence_min and job.priority.value == "HOLD":
+        impact_confidence_min = float(getattr(active_policy, "impact_confidence_min", settings.impact_confidence_min))
+        if impact_confidence < impact_confidence_min and job.priority.value == "HOLD":
             job.priority = PriorityQueue.P2
-        if impact_confidence < settings.impact_confidence_min and job.priority.value in {"P2", "HOLD"}:
+        if impact_confidence < impact_confidence_min and job.priority.value in {"P2", "HOLD"}:
             job.state = JobState.AI_PHASE_A_DONE
         else:
-            active_policy = policy_service.get_active_policy(db)
             if job.priority.value == "HOLD" and active_policy.hold_auto_create_gate1:
                 job.state = JobState.AI_PHASE_A_DONE
             else:
@@ -352,13 +353,13 @@ class WorkflowService:
         localized_meta = self._extract_meta(localized)
         ai.generated_content = self._strip_meta(content)
         ai.localized_content = self._strip_meta(localized)
-        job.state = JobState.AI_PHASE_B_DONE
+        job.state = JobState.AI_CONTENT_PREP_DONE
         db.commit()
         audit_service.write_audit(
             db,
             "job",
             job.job_id,
-            "PHASE_B_COMPLETED",
+            "AI_CONTENT_PREP_COMPLETED",
             None,
             {
                 "locale": ai.localized_content.get("locale"),
@@ -413,7 +414,7 @@ class WorkflowService:
             }
             ai.generated_content = generated_content
             ai.localized_content = localized_content
-            job.state = JobState.MEDIA_MIX_READY
+            job.state = JobState.AI_PHASE_B_DONE
             self._clear_error_if_recovered(job)
             db.commit()
             audit_service.write_audit(
@@ -425,6 +426,18 @@ class WorkflowService:
                 {
                     "audio_path": generated_content["audio_news"]["path"],
                     "mixed_video_path": localized_content["media_mix"]["path"],
+                },
+            )
+            audit_service.write_audit(
+                db,
+                "job",
+                job.job_id,
+                "PHASE_B_COMPLETED",
+                None,
+                {
+                    "locale": ai.localized_content.get("locale"),
+                    "content_prep_completed": True,
+                    "media_mix_ready": True,
                 },
             )
         except Exception as exc:
@@ -528,7 +541,7 @@ class WorkflowService:
             "attempts_used": attempts,
         }
         ai.localized_content = localized_content
-        job.state = JobState.MEDIA_MIX_READY
+        job.state = JobState.AI_PHASE_B_DONE
         self._clear_error_if_recovered(job)
         db.commit()
         audit_service.write_audit(
@@ -538,6 +551,18 @@ class WorkflowService:
             "MEDIA_MIX_READY",
             None,
             {"mixed_video_path": result.get("mixed_video_path"), "manual_retry": True},
+        )
+        audit_service.write_audit(
+            db,
+            "job",
+            job.job_id,
+            "PHASE_B_COMPLETED",
+            None,
+            {
+                "content_prep_completed": True,
+                "media_mix_ready": True,
+                "manual_retry": True,
+            },
         )
         existing_open_gate_2 = db.scalar(
             select(ReviewTask).where(

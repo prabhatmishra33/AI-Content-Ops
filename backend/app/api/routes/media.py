@@ -66,7 +66,7 @@ def get_media_status(video_id: str, _user=Depends(require_roles("moderator", "ad
     if mix_path:
         mix_meta["path"] = str(mix_path)
 
-    if job.state.value == "MEDIA_MIX_READY":
+    if job.state.value in {"AI_PHASE_B_DONE", "MEDIA_MIX_READY"}:
         if audio_path and audio_meta.get("state") != "READY":
             audio_meta["state"] = "READY"
         if mix_path and mix_meta.get("state") != "READY":

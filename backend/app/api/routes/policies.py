@@ -20,6 +20,8 @@ def get_active_policy(_user=Depends(require_roles("admin", "moderator")), db: Se
             "threshold_p0": policy.threshold_p0,
             "threshold_p1": policy.threshold_p1,
             "threshold_p2": policy.threshold_p2,
+            "impact_confidence_min": policy.impact_confidence_min,
+            "news_trending_escalation_enabled": policy.news_trending_escalation_enabled,
             "hold_auto_create_gate1": policy.hold_auto_create_gate1,
             "is_active": policy.is_active,
         }
@@ -44,6 +46,8 @@ def activate_policy(
         threshold_p0=payload.threshold_p0,
         threshold_p1=payload.threshold_p1,
         threshold_p2=payload.threshold_p2,
+        impact_confidence_min=payload.impact_confidence_min,
+        news_trending_escalation_enabled=payload.news_trending_escalation_enabled,
         hold_auto_create_gate1=payload.hold_auto_create_gate1,
     )
     response = {
@@ -51,6 +55,8 @@ def activate_policy(
         "threshold_p0": policy.threshold_p0,
         "threshold_p1": policy.threshold_p1,
         "threshold_p2": policy.threshold_p2,
+        "impact_confidence_min": policy.impact_confidence_min,
+        "news_trending_escalation_enabled": policy.news_trending_escalation_enabled,
         "hold_auto_create_gate1": policy.hold_auto_create_gate1,
         "is_active": policy.is_active,
     }

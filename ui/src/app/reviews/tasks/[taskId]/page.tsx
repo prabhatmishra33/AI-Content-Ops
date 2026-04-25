@@ -98,6 +98,23 @@ export default function ReviewTaskDetailPage() {
     moderationConfidence >= 0.8 ? "High confidence" : moderationConfidence >= 0.5 ? "Medium confidence" : "Low confidence";
   const audioState = String(mediaQ.data?.audio?.state ?? "PENDING");
   const mixState = String(mediaQ.data?.mix?.state ?? "PENDING");
+  const workflowState = String(mediaQ.data?.job_state ?? "");
+  const mediaMixReadyOrLaterStates = new Set([
+    "AI_PHASE_B_DONE",
+    "MEDIA_MIX_READY",
+    "IN_REVIEW_GATE_2",
+    "DISTRIBUTED",
+    "REPORT_READY",
+    "COMPLETED",
+    "REJECTED_GATE_2",
+    "FAILED",
+  ]);
+  const mediaMixPanelMode: "not_started" | "waiting" | "active" =
+    workflowState === "AI_CONTENT_PREP_DONE"
+      ? "waiting"
+      : mediaMixReadyOrLaterStates.has(workflowState)
+        ? "active"
+        : "not_started";
   const audioPath = String((aiQ.data?.audio_news as Record<string, unknown> | undefined)?.path ?? "");
   const audioFilename = audioPath ? audioPath.split(/[\\/]/).pop() ?? "" : "";
   const aiError = aiQ.error as ApiError | null;
@@ -109,7 +126,7 @@ export default function ReviewTaskDetailPage() {
     const videoId = task?.video_id;
 
     const loadMixedPreview = async () => {
-      if (!videoId || mixState !== "READY") {
+      if (!videoId || mediaMixPanelMode !== "active" || mixState !== "READY") {
         setMixedPreviewUrl(null);
         setMixedPreviewError(null);
         return;
@@ -135,7 +152,7 @@ export default function ReviewTaskDetailPage() {
       isMounted = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [task?.video_id, mixState]);
+  }, [task?.video_id, mediaMixPanelMode, mixState]);
 
   useEffect(() => {
     let isMounted = true;
@@ -269,7 +286,39 @@ export default function ReviewTaskDetailPage() {
 
       <div className="card min-w-0 space-y-3 text-sm">
         <h2 className="section-title">Media Readiness</h2>
-        {mediaQ.isLoading ? (
+        {mediaMixPanelMode === "not_started" ? (
+          <div className="space-y-3">
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Narration Audio</p>
+                <p className="mt-1 font-medium text-slate-800">Not started</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mixed Preview</p>
+                <p className="mt-1 font-medium text-slate-800">Not started</p>
+              </div>
+            </div>
+            <div className="flex h-24 w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-100 text-sm text-slate-500">
+              Preview not started
+            </div>
+          </div>
+        ) : mediaMixPanelMode === "waiting" ? (
+          <div className="space-y-3">
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Narration Audio</p>
+                <p className="mt-1 font-medium text-slate-800">Waiting to start</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mixed Preview</p>
+                <p className="mt-1 font-medium text-slate-800">Waiting to start</p>
+              </div>
+            </div>
+            <div className="flex h-24 w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-100 text-sm text-slate-500">
+              Waiting to start
+            </div>
+          </div>
+        ) : mediaQ.isLoading ? (
           <div className="flex h-24 items-center justify-center rounded bg-slate-100">
             <span className="inline-flex items-center gap-2 text-sm text-slate-500">
               <Spinner size="sm" />

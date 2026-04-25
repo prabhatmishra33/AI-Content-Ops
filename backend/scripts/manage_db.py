@@ -34,6 +34,21 @@ def migrate() -> None:
                     conn.execute(text(f"ALTER TABLE ai_results ADD COLUMN {col} JSON"))
                     print(f"Applied migration: ai_results.{col}")
 
+            policy_cols = conn.execute(text("PRAGMA table_info(threshold_policies)")).fetchall()
+            policy_col_names = {r[1] for r in policy_cols}
+            if "impact_confidence_min" not in policy_col_names:
+                conn.execute(
+                    text(
+                        f"ALTER TABLE threshold_policies ADD COLUMN impact_confidence_min FLOAT NOT NULL DEFAULT {settings.impact_confidence_min}"
+                    )
+                )
+                print("Applied migration: threshold_policies.impact_confidence_min")
+            if "news_trending_escalation_enabled" not in policy_col_names:
+                conn.execute(
+                    text("ALTER TABLE threshold_policies ADD COLUMN news_trending_escalation_enabled BOOLEAN NOT NULL DEFAULT 1")
+                )
+                print("Applied migration: threshold_policies.news_trending_escalation_enabled")
+
             # Verify processing_jobs.state can store MEDIA_MIX_READY.
             # Older DBs might have a restrictive CHECK constraint in custom/manual schemas.
             processing_jobs_sql = conn.execute(
@@ -95,6 +110,8 @@ def seed() -> None:
                     threshold_p0=settings.threshold_p0,
                     threshold_p1=settings.threshold_p1,
                     threshold_p2=settings.threshold_p2,
+                    impact_confidence_min=settings.impact_confidence_min,
+                    news_trending_escalation_enabled=True,
                     hold_auto_create_gate1=settings.hold_auto_create_gate1,
                     is_active=True,
                 )
