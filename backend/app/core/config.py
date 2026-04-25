@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     google_cloud_project: str | None = None
     google_cloud_location: str | None = None
 
+    # Search grounding & cache
+    agent_search_enabled: bool = True
+    search_cache_enabled: bool = True
+    search_cache_ttl_seconds: int = 3600
+    model_name_veracity: str = "gemini-2.5-flash"
+
     # Token encryption (Fernet key, base64 url-safe)
     token_encryption_key: str | None = None
 

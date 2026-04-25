@@ -29,9 +29,12 @@ class ClassificationAgent:
 
         from app.agents.base_multimodal import (
             ENTITY_LOOKUP_TOOL,
+            GOOGLE_SEARCH_TOOL,
             _extract_json,
+            extract_grounding_metadata,
             run_tool_loop,
         )
+        from app.core.config import settings as _settings
 
         client = get_genai_client(force_vertexai=False)
         model = getattr(settings, "model_name_classification", "gemini-2.5-flash")
@@ -42,29 +45,31 @@ class ClassificationAgent:
             "You are an enterprise content taxonomy expert. Watch this video carefully. "
             "Classify its content and identify any recognizable real-world entities "
             "(people, places, organizations, events). "
-            "Use the lookup_entity_info tool to fetch Wikipedia context for any entities you identify — "
-            "this helps produce accurate tags and entity descriptions.\n\n"
+            "Use Google Search to find current context for any entities you identify — "
+            "this helps produce accurate tags, current classifications, and entity descriptions.\n\n"
             "When done, return ONLY a JSON object with these fields:\n"
             '  "primary_category": string\n'
             '  "tags": array of strings\n'
-            '  "named_entities": array of {name: string, type: string, wikipedia_summary: string}\n'
+            '  "named_entities": array of {name: string, type: string, summary: string}\n'
             '  "confidence": float 0.0-1.0\n'
         )
 
+        tools = [GOOGLE_SEARCH_TOOL, ENTITY_LOOKUP_TOOL] if _settings.agent_search_enabled else [ENTITY_LOOKUP_TOOL]
         config = types.GenerateContentConfig(
-            tools=[ENTITY_LOOKUP_TOOL],
+            tools=tools,
             temperature=0.2,
             thinking_config=types.ThinkingConfig(thinking_budget=-1),
         )
 
         contents = [gemini_file, prompt]
-        final_text = run_tool_loop(client, model, contents, config)
+        final_text, final_response = run_tool_loop(client, model, contents, config)
 
         data = _extract_json(final_text)
         data["__meta"] = {
             "model": model,
             "direct_vertex": True,
-            "prompt_version": "v2_video",
+            "prompt_version": "v3_search",
+            "web_sources": extract_grounding_metadata(final_response),
         }
         return data
 

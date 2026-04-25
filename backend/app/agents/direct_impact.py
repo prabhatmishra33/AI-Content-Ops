@@ -36,9 +36,28 @@ SCORING_SCHEMA = {
         "final_score": {"type": "NUMBER"},
         "final_level": {"type": "STRING", "enum": ["low", "medium", "high", "very_high"]},
         "confidence": {"type": "NUMBER"},
-        "summary": {"type": "STRING"}
+        "summary": {"type": "STRING"},
+        "market_sensitivity": {
+            "type": "OBJECT",
+            "properties": {
+                "is_market_sensitive": {"type": "BOOLEAN"},
+                "affected_entities": {"type": "ARRAY", "items": {"type": "STRING"}},
+                "sebi_risk": {"type": "STRING", "enum": ["NONE", "LOW", "MEDIUM", "HIGH"]},
+                "recommended_action": {"type": "STRING"},
+            },
+            "required": ["is_market_sensitive", "affected_entities", "sebi_risk", "recommended_action"],
+        },
+        "news_context": {
+            "type": "OBJECT",
+            "properties": {
+                "is_trending": {"type": "BOOLEAN"},
+                "trending_topics": {"type": "ARRAY", "items": {"type": "STRING"}},
+                "velocity": {"type": "STRING", "enum": ["NONE", "LOW", "MEDIUM", "HIGH", "BREAKING"]},
+            },
+            "required": ["is_trending", "trending_topics", "velocity"],
+        },
     },
-    "required": ["components", "final_score", "final_level", "confidence", "summary"]
+    "required": ["components", "final_score", "final_level", "confidence", "summary", "market_sensitivity", "news_context"]
 }
 
 ENTITY_EXTRACTION_SCHEMA = {
@@ -111,6 +130,19 @@ Set 'confidence' (0.0 to 1.0) to reflect how strongly the video evidence support
   - 0.3–0.5: Limited evidence, significant inference
   - 0.1–0.3: Weak or ambiguous evidence, low certainty
   - 0.1:     Non-news or irrelevant content (see NEGATIVE CONSTRAINT)
+
+MARKET SENSITIVITY (use the provided current news context to inform this):
+Assess whether content involves publicly listed companies or SEBI-regulated information:
+- is_market_sensitive: true if content involves listed companies, earnings, M&A, or financial disclosures
+- affected_entities: list of company/ticker names that may be affected
+- sebi_risk: NONE / LOW / MEDIUM / HIGH — risk level for SEBI-regulated content
+- recommended_action: e.g. "Legal review required before publish" or "None"
+
+NEWS VELOCITY (use the provided current news context to inform this):
+Based on the current news context provided:
+- is_trending: true if the topic is currently breaking or trending in news
+- trending_topics: list of specific angles that are trending (empty list if not trending)
+- velocity: NONE / LOW / MEDIUM / HIGH / BREAKING — how fast this is moving in the news cycle
 """
 
 
@@ -158,14 +190,18 @@ class DirectImpactScoringAgent:
                 logger.warning(f"Failed to cleanup file {uploaded.name}: {exc}")
 
     def _score_with_entity_enrichment(self, file_info, cleanup_file: bool = False) -> dict:
-        """Two-pass approach: extract entities, enrich via Wikipedia, then score."""
-        from app.agents.base_multimodal import fetch_entity_info
+        """Three-pass: extract entities → Google Search for current news context → score."""
+        from app.agents.base_multimodal import GOOGLE_SEARCH_TOOL, extract_grounding_metadata
+        from app.services.search_cache_service import SearchCacheService
+        from app.core.config import settings
 
-        # Pass 1: extract named entities from the video
+        model = getattr(settings, "model_name_impact", "gemini-2.5-flash")
+
+        # Pass 1: extract named entities (structured schema — no search needed here)
         entities = []
         try:
             entity_response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
+                model=model,
                 contents=[
                     file_info,
                     (
@@ -186,27 +222,51 @@ class DirectImpactScoringAgent:
         except Exception as exc:
             logger.warning(f"Entity extraction pass failed, skipping enrichment: {exc}")
 
-        # Enrich entities with Wikipedia data
-        enriched_context = ""
-        entity_lookups = 0
-        for entity in entities[:8]:  # cap to avoid excessive API calls
-            info = fetch_entity_info(entity.get("name", ""), entity.get("type", "person"))
-            if info.get("found") and info.get("extract"):
-                enriched_context += f"\n- {info['title']} ({entity.get('type')}): {info['extract'][:300]}"
-                entity_lookups += 1
+        # Pass 2: Google Search for current news/market context (replaces Wikipedia)
+        search_context = ""
+        web_sources: list[dict] = []
+        if entities and settings.agent_search_enabled:
+            entity_names = ", ".join(e["name"] for e in entities[:5])
+            cache = SearchCacheService()
+            cached = cache.get(entity_names)
+            if cached:
+                search_context = cached.get("context", "")
+                web_sources = cached.get("sources", [])
+                logger.info(f"Search cache HIT for entities: {entity_names}")
+            else:
+                try:
+                    search_response = self.client.models.generate_content(
+                        model=model,
+                        contents=[
+                            f"Search for the latest news and context about: {entity_names}. "
+                            "Are any involved in breaking news, market events, financial disclosures, or controversy? "
+                            "Is this topic currently trending? "
+                            "Summarize the most relevant current context in 4-6 sentences."
+                        ],
+                        config=types.GenerateContentConfig(
+                            tools=[GOOGLE_SEARCH_TOOL],
+                            temperature=0.1,
+                        ),
+                    )
+                    search_context = search_response.text or ""
+                    web_sources = extract_grounding_metadata(search_response)
+                    cache.set(entity_names, {"context": search_context, "sources": web_sources})
+                    logger.info(f"Search enriched with {len(web_sources)} sources for: {entity_names}")
+                except Exception as exc:
+                    logger.warning(f"Google Search pass failed, proceeding without: {exc}")
 
-        # Pass 2: full impact scoring with enriched entity context
+        # Pass 3: full impact scoring with injected search context (structured schema)
         context_prefix = ""
-        if enriched_context:
+        if search_context:
             context_prefix = (
-                "REAL-WORLD ENTITY CONTEXT (use this to inform your scoring):\n"
-                + enriched_context
+                "CURRENT NEWS CONTEXT (from Google Search — use this to inform all scoring):\n"
+                + search_context
                 + "\n\n"
             )
 
-        logger.info(f"Running impact scoring with {entity_lookups} enriched entities...")
+        logger.info("Running impact scoring pass...")
         response = self.client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=model,
             contents=[file_info, context_prefix + SCORING_PROMPT],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -217,9 +277,7 @@ class DirectImpactScoringAgent:
         )
 
         data = json.loads(response.text)
-
-        impact_score = float(data.get("final_score", 0.0))
-        data["impact_score"] = min(max(impact_score, 0.0), 1.0)
+        data["impact_score"] = min(max(float(data.get("final_score", 0.0)), 0.0), 1.0)
         data["confidence"] = float(data.get("confidence", 0.0))
 
         usage_str = None
@@ -227,10 +285,12 @@ class DirectImpactScoringAgent:
             usage_str = str(response.usage_metadata)
 
         data["__meta"] = {
-            "model": "gemini-2.5-flash",
+            "model": model,
             "direct_vertex": True,
-            "entity_lookups": entity_lookups,
             "entities_detected": len(entities),
+            "search_sources": len(web_sources),
+            "web_sources": web_sources,
+            "search_cache_hit": bool(search_context and not web_sources),
             "usage": usage_str,
         }
         return data
