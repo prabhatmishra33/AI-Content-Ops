@@ -1,12 +1,14 @@
-import time
 import json
 import logging
+import time
 from pathlib import Path
+from typing import Optional
 
 from google import genai
 from google.genai import types
 
 from app.core.config import settings
+from app.core.genai_client import get_genai_client
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,17 @@ SCORING_SCHEMA = {
     "required": ["components", "final_score", "final_level", "confidence", "summary"]
 }
 
+ENTITY_EXTRACTION_SCHEMA = {
+    "type": "ARRAY",
+    "items": {
+        "type": "OBJECT",
+        "properties": {
+            "name": {"type": "STRING"},
+            "type": {"type": "STRING", "enum": ["person", "place", "organization", "event"]},
+        },
+        "required": ["name", "type"],
+    },
+}
 
 SCORING_PROMPT = """
 Act as a Senior Geopolitical Risk Analyst and Crisis Evaluator. Your job is to provide cold, objective, highly analytical scoring of events based strictly on empirical evidence.
@@ -103,70 +116,126 @@ Set 'confidence' (0.0 to 1.0) to reflect how strongly the video evidence support
 
 class DirectImpactScoringAgent:
     def __init__(self):
-        self.api_key = settings.google_api_key or settings.gemini_api_key or settings.model_api_key
-        if not self.api_key:
-            raise ValueError("Google GenAI requires GOOGLE_API_KEY (or gemini/model api key) to be set.")
-        self.client = genai.Client(api_key=self.api_key)
+        self.client = get_genai_client(force_vertexai=False)
 
-    def run(self, video_path: str) -> dict:
+    def run(self, video_path: str, gemini_file_cache=None) -> dict:
+        if gemini_file_cache:
+            return self._run_with_cache(video_path, gemini_file_cache)
+        return self._run_standalone(video_path)
+
+    def _run_with_cache(self, video_path: str, gemini_file_cache) -> dict:
+        """Shared-cache path: file upload is managed externally."""
+        file_info = gemini_file_cache.get_or_upload(video_path)
+        return self._score_with_entity_enrichment(file_info, cleanup_file=False)
+
+    def _run_standalone(self, video_path: str) -> dict:
+        """Standalone path for __main__ / direct CLI use — manages its own upload/delete."""
         path = Path(video_path)
         if not path.exists():
             raise FileNotFoundError(f"Video file not found: {video_path}")
 
-        logger.info(f"Uploading '{path.name}' to Vertex AI for direct impact scoring...")
-        uploaded_file = self.client.files.upload(file=str(path))
-        
+        logger.info(f"Uploading '{path.name}' to Gemini Files API (standalone mode)...")
+        uploaded = self.client.files.upload(
+            file=str(path),
+            config=types.UploadFileConfig(mime_type="video/mp4")
+        )
+        file_info = None
         try:
-            logger.info("Waiting for video processing to complete in Gemini Files API...")
+            logger.info("Waiting for video processing...")
             while True:
-                file_info = self.client.files.get(name=uploaded_file.name)
+                file_info = self.client.files.get(name=uploaded.name)
                 state = file_info.state.name if hasattr(file_info.state, "name") else str(file_info.state)
                 if state == "ACTIVE":
                     break
-                elif state == "FAILED":
+                if state == "FAILED":
                     raise RuntimeError("Video processing failed in Gemini.")
                 time.sleep(3)
-
-            logger.info("Processing complete. Sending prompt to gemini-2.5-flash with Chain-of-Thought...")
-            response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=[file_info, SCORING_PROMPT],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=SCORING_SCHEMA,
-                    temperature=0.2,
-                    thinking_config=types.ThinkingConfig(thinking_budget=-1)
-                ),
-            )
-            
-            data = json.loads(response.text)
-            
-            # Map back to pipeline required schema
-            impact_score = float(data.get("final_score", 0.0))
-            data["impact_score"] = min(max(impact_score, 0.0), 1.0)
-            data["confidence"] = float(data.get("confidence", 0.0))
-            
-            # Extract basic metric usage string for audit logs
-            usage_str = None
-            if hasattr(response, "usage_metadata") and response.usage_metadata:
-                usage_str = str(response.usage_metadata)
-
-            data["__meta"] = {
-                "model": "gemini-3.1-flash-lite-preview",
-                "direct_vertex": True,
-                "usage": usage_str
-            }
-            return data
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Vertex AI response as JSON. Raw output: {response.text}")
-            raise RuntimeError("Invalid JSON response from Vertex AI") from e
+            return self._score_with_entity_enrichment(file_info, cleanup_file=False)
         finally:
             try:
-                self.client.files.delete(name=uploaded_file.name)
-            except Exception as e:
-                logger.warning(f"Failed to cleanup file {uploaded_file.name}: {e}")
-# simple main file to teset this
+                self.client.files.delete(name=uploaded.name)
+            except Exception as exc:
+                logger.warning(f"Failed to cleanup file {uploaded.name}: {exc}")
+
+    def _score_with_entity_enrichment(self, file_info, cleanup_file: bool = False) -> dict:
+        """Two-pass approach: extract entities, enrich via Wikipedia, then score."""
+        from app.agents.base_multimodal import fetch_entity_info
+
+        # Pass 1: extract named entities from the video
+        entities = []
+        try:
+            entity_response = self.client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[
+                    file_info,
+                    (
+                        "List all named real-world entities you can identify in this video: "
+                        "people, organizations, locations, events. "
+                        'Return a JSON array: [{"name": "...", "type": "person|place|organization|event"}]. '
+                        "Return an empty array [] if the video contains no real-world entities."
+                    ),
+                ],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=ENTITY_EXTRACTION_SCHEMA,
+                    temperature=0.1,
+                ),
+            )
+            entities = json.loads(entity_response.text) or []
+            logger.info(f"Detected {len(entities)} entities in video")
+        except Exception as exc:
+            logger.warning(f"Entity extraction pass failed, skipping enrichment: {exc}")
+
+        # Enrich entities with Wikipedia data
+        enriched_context = ""
+        entity_lookups = 0
+        for entity in entities[:8]:  # cap to avoid excessive API calls
+            info = fetch_entity_info(entity.get("name", ""), entity.get("type", "person"))
+            if info.get("found") and info.get("extract"):
+                enriched_context += f"\n- {info['title']} ({entity.get('type')}): {info['extract'][:300]}"
+                entity_lookups += 1
+
+        # Pass 2: full impact scoring with enriched entity context
+        context_prefix = ""
+        if enriched_context:
+            context_prefix = (
+                "REAL-WORLD ENTITY CONTEXT (use this to inform your scoring):\n"
+                + enriched_context
+                + "\n\n"
+            )
+
+        logger.info(f"Running impact scoring with {entity_lookups} enriched entities...")
+        response = self.client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[file_info, context_prefix + SCORING_PROMPT],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=SCORING_SCHEMA,
+                temperature=0.2,
+                thinking_config=types.ThinkingConfig(thinking_budget=-1),
+            ),
+        )
+
+        data = json.loads(response.text)
+
+        impact_score = float(data.get("final_score", 0.0))
+        data["impact_score"] = min(max(impact_score, 0.0), 1.0)
+        data["confidence"] = float(data.get("confidence", 0.0))
+
+        usage_str = None
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
+            usage_str = str(response.usage_metadata)
+
+        data["__meta"] = {
+            "model": "gemini-2.5-flash",
+            "direct_vertex": True,
+            "entity_lookups": entity_lookups,
+            "entities_detected": len(entities),
+            "usage": usage_str,
+        }
+        return data
+
+
 if __name__ == "__main__":
     agent = DirectImpactScoringAgent()
     result = agent.run(r"C:\Users\tanma\projects\storage\uploads\vid_4bc1ca86a136_WhatsApp Video 2026-03-27 at 1.55.45 AM.mp4")

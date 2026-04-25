@@ -12,6 +12,7 @@ from google import genai
 from google.genai import types
 
 from app.core.config import settings
+from app.core.genai_client import get_genai_client
 from app.services.prompt_registry import get_prompt
 
 
@@ -82,17 +83,7 @@ class AudioNewsService:
 
     @staticmethod
     def _get_client() -> genai.Client:
-        if settings.google_genai_use_vertexai:
-            return genai.Client(
-                vertexai=True,
-                project=settings.google_cloud_project,
-                location=settings.google_cloud_location or "global",
-            )
-
-        api_key = settings.google_api_key or settings.gemini_api_key or settings.model_api_key
-        if not api_key:
-            raise ValueError("Missing Google API key for audio generation")
-        return genai.Client(api_key=api_key)
+        return get_genai_client(force_vertexai=True)
 
     @staticmethod
     def _safe_close_client(client: object) -> None:

@@ -1,2 +1,6 @@
 storage/*
 .env.production
+.claude/
+*.wav
+*.mp3
+.claire/*
