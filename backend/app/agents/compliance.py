@@ -99,11 +99,13 @@ class ComplianceGovernanceAgent:
         if settings.agent_search_enabled:
             reg_context, web_sources = self._get_regulation_context(classification)
 
+        from app.agents.base_multimodal import today_context
         reg_prefix = f"CURRENT REGULATION CONTEXT (from Google Search):\n{reg_context}\n\n" if reg_context else ""
 
         prompt = (
-            f"{reg_prefix}"
-            "You are a senior legal compliance officer and brand safety expert. "
+            today_context()
+            + f"{reg_prefix}"
+            + "You are a senior legal compliance officer and brand safety expert. "
             "Review the provided video alongside its prior AI moderation and classification results.\n\n"
             f"Moderation analysis: {mod_summary}\n"
             f"Classification analysis: {cls_summary}\n\n"
@@ -149,12 +151,14 @@ class ComplianceGovernanceAgent:
         mod_summary = json.dumps({k: v for k, v in moderation.items() if k != "__meta"})
         cls_summary = json.dumps({k: v for k, v in classification.items() if k != "__meta"})
 
+        from app.agents.base_multimodal import today_context
         reg_context, web_sources = self._get_regulation_context(classification)
         reg_prefix = f"CURRENT REGULATION CONTEXT (from Google Search):\n{reg_context}\n\n" if reg_context else ""
 
         prompt = get_prompt("compliance")
         user = (
-            f"{reg_prefix}"
+            today_context()
+            + f"{reg_prefix}"
             + prompt["user_template"].format(moderation=mod_summary, classification=cls_summary)
         )
 
@@ -173,8 +177,9 @@ class ComplianceGovernanceAgent:
         return data
 
     def _run_text(self, moderation: Dict[str, Any], classification: Dict[str, Any]) -> Dict[str, Any]:
+        from app.agents.base_multimodal import today_context
         prompt = get_prompt("compliance")
-        user = prompt["user_template"].format(moderation=moderation, classification=classification)
+        user = today_context() + prompt["user_template"].format(moderation=moderation, classification=classification)
         data, meta = asyncio.run(
             self.gateway.generate_json(
                 model=settings.model_name_compliance,
