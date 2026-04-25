@@ -27,6 +27,13 @@ def migrate() -> None:
                 conn.execute(text("ALTER TABLE video_assets ADD COLUMN thumbnail_uri VARCHAR(512)"))
                 print("Applied migration: video_assets.thumbnail_uri")
 
+            ai_cols = conn.execute(text("PRAGMA table_info(ai_results)")).fetchall()
+            ai_col_names = {r[1] for r in ai_cols}
+            for col in ("veracity", "market_sensitivity", "news_context"):
+                if col not in ai_col_names:
+                    conn.execute(text(f"ALTER TABLE ai_results ADD COLUMN {col} JSON"))
+                    print(f"Applied migration: ai_results.{col}")
+
             # Verify processing_jobs.state can store MEDIA_MIX_READY.
             # Older DBs might have a restrictive CHECK constraint in custom/manual schemas.
             processing_jobs_sql = conn.execute(

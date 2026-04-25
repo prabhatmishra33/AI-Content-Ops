@@ -45,6 +45,9 @@ class AIResult(Base):
     compliance: Mapped[dict] = mapped_column(JSON, default=dict)
     generated_content: Mapped[dict] = mapped_column(JSON, default=dict)
     localized_content: Mapped[dict] = mapped_column(JSON, default=dict)
+    veracity: Mapped[dict] = mapped_column(JSON, default=dict)
+    market_sensitivity: Mapped[dict] = mapped_column(JSON, default=dict)
+    news_context: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

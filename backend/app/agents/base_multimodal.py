@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 
 MAX_TOOL_TURNS = 5
 
+GOOGLE_SEARCH_TOOL = types.Tool(google_search=types.GoogleSearch())
+
 ENTITY_LOOKUP_TOOL = types.Tool(
     function_declarations=[
         types.FunctionDeclaration(
@@ -75,17 +77,40 @@ def _extract_json(text: str) -> dict:
         return json.loads(m.group(0))
 
 
-def run_tool_loop(client: Any, model: str, contents: list, config: Any) -> str:
+def extract_grounding_metadata(response: Any) -> list[dict]:
+    """Extract web sources from a Gemini response's grounding metadata."""
+    sources = []
+    try:
+        candidate = response.candidates[0]
+        grounding = getattr(candidate, "grounding_metadata", None)
+        if not grounding:
+            return sources
+        for chunk in getattr(grounding, "grounding_chunks", []):
+            web = getattr(chunk, "web", None)
+            if web:
+                sources.append({
+                    "title": getattr(web, "title", ""),
+                    "url": getattr(web, "uri", ""),
+                })
+    except Exception:
+        pass
+    return sources
+
+
+def run_tool_loop(client: Any, model: str, contents: list, config: Any) -> tuple[str, Any]:
     """Run an agentic Gemini tool loop until no function_call parts remain.
-    Returns the final text response. Raises RuntimeError if MAX_TOOL_TURNS exceeded."""
+    Returns (final_text, final_response). Raises RuntimeError if MAX_TOOL_TURNS exceeded.
+    Google Search grounding happens transparently — no function_call parts are produced."""
+    final_response = None
     for turn in range(MAX_TOOL_TURNS):
         response = client.models.generate_content(model=model, contents=contents, config=config)
+        final_response = response
 
         candidate_parts = response.candidates[0].content.parts
         function_calls = [p for p in candidate_parts if getattr(p, "function_call", None)]
 
         if not function_calls:
-            return response.text
+            return response.text, response
 
         # Append model's response turn, then tool result turn
         contents.append(response.candidates[0].content)
