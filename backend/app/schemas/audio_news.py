@@ -39,6 +39,11 @@ class AudioNewsGenerateRequest(BaseModel):
         default=None,
         description="Override the Gemini TTS model.",
     )
+    video_duration_s: Optional[float] = Field(
+        default=None,
+        ge=1.0,
+        description="Source video duration in seconds. When provided, the script length is scaled to match the video so the audio podcast matches the video runtime.",
+    )
 
 
 class AudioNewsGenerateResponse(BaseModel):

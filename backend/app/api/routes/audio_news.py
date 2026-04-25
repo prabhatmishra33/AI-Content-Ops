@@ -41,6 +41,7 @@ def generate_audio(payload: AudioNewsGenerateRequest, _user=Depends(require_role
         locale=payload.locale,
         script_model=payload.script_model,
         tts_model=payload.tts_model,
+        video_duration_s=payload.video_duration_s,
     )
     return ApiResponse(data=result)
 
