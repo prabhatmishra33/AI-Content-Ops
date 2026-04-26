@@ -16,6 +16,12 @@ backgroundColor: #f8f9fa
 
 ---
 
+# Problem Statement
+
+![height:500px center](problem-we-are-solving.jpeg)
+
+---
+
 # Idea
 
 ![height:500px center](Platform%20Idea%20Overview.png)
